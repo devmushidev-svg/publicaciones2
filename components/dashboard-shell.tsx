@@ -5,13 +5,17 @@ import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { DashboardOverview } from '@/components/dashboard/dashboard-overview'
 import { DashboardSidebar } from '@/components/dashboard/dashboard-sidebar'
 import type { OverviewData } from '@/lib/dashboard/overview'
+import type { PublicationRecord } from '@/lib/dashboard/publications'
+import { DashboardPublications } from '@/components/dashboard/dashboard-publications'
 
 type DashboardShellProps = {
   userName: string
   overview: OverviewData
+  publications: PublicationRecord[]
+  publicationsError: boolean
 }
 
-export function DashboardShell({ userName, overview }: DashboardShellProps) {
+export function DashboardShell({ userName, overview, publications, publicationsError }: DashboardShellProps) {
   const [active, setActive] = useState('Inicio')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const mobileSidebarRef = useRef<HTMLDialogElement>(null)
@@ -44,7 +48,9 @@ export function DashboardShell({ userName, overview }: DashboardShellProps) {
 
       <main className="lg:ml-[248px]">
         <DashboardHeader onOpenMenu={() => setSidebarOpen(true)} menuOpen={sidebarOpen} userName={userName} />
-        <DashboardOverview userName={userName} overview={overview} />
+        {active === 'Publicaciones'
+          ? <DashboardPublications publications={publications} hasError={publicationsError} />
+          : <DashboardOverview userName={userName} overview={overview} />}
       </main>
     </div>
   )
