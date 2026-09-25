@@ -7,6 +7,8 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient()
   const { error } = await supabase.auth.exchangeCodeForSession(code)
-  const destination = error ? '/login?error=confirmation' : '/'
+  const next = request.nextUrl.searchParams.get('next')
+  const safeNext = next?.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/'
+  const destination = error ? '/login?error=confirmation' : safeNext
   return NextResponse.redirect(new URL(destination, request.url))
 }

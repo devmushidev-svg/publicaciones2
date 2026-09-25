@@ -4,10 +4,10 @@ import { useCallback, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, FilePlus2 } from 'lucide-react'
 import { PublicationDialog } from '@/components/dashboard/dashboard-publications'
 import type { PublicationRecord } from '@/lib/dashboard/publications'
+import { dateKeyInTimezone, yearMonthInTimezone } from '@/lib/date-time'
 
-const weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+const weekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const monthFormatter = new Intl.DateTimeFormat('es', { month: 'long', year: 'numeric' })
-const timeFormatter = new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' })
 
 function dayKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -26,12 +26,12 @@ function dateLabel(date: Date) {
   return new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'long' }).format(date)
 }
 
-export function DashboardCalendar({ publications }: { publications: PublicationRecord[] }) {
+export function DashboardCalendar({ publications, weekStartsOn = 1, timezone = 'America/Tegucigalpa' }: { publications: PublicationRecord[]; weekStartsOn?: number; timezone?: string }) {
   const [visibleMonth, setVisibleMonth] = useState(() => {
-    const today = new Date()
-    return new Date(today.getFullYear(), today.getMonth(), 1)
+    const { year, month } = yearMonthInTimezone(new Date(), timezone)
+    return new Date(year, month - 1, 1)
   })
-  const [selectedDay, setSelectedDay] = useState(() => dayKey(new Date()))
+  const [selectedDay, setSelectedDay] = useState(() => dateKeyInTimezone(new Date(), timezone))
   const [newDate, setNewDate] = useState<string | null>(null)
   const [editing, setEditing] = useState<PublicationRecord | null>(null)
   const closeDialog = useCallback(() => {
@@ -41,10 +41,10 @@ export function DashboardCalendar({ publications }: { publications: PublicationR
 
   const days = useMemo(() => {
     const first = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1)
-    const mondayOffset = (first.getDay() + 6) % 7
-    const start = new Date(first.getFullYear(), first.getMonth(), 1 - mondayOffset)
+    const offset = (first.getDay() - weekStartsOn + 7) % 7
+    const start = new Date(first.getFullYear(), first.getMonth(), 1 - offset)
     return Array.from({ length: 42 }, (_, index) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + index))
-  }, [visibleMonth])
+  }, [visibleMonth, weekStartsOn])
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, PublicationRecord[]>()
@@ -52,16 +52,16 @@ export function DashboardCalendar({ publications }: { publications: PublicationR
       if (publication.status === 'archived' || publication.status === 'draft') continue
       const date = publicationDate(publication)
       if (!date || Number.isNaN(date.getTime())) continue
-      const key = dayKey(date)
+      const key = dateKeyInTimezone(date, timezone)
       map.set(key, [...(map.get(key) ?? []), publication])
     }
     for (const events of map.values()) events.sort((a, b) => (publicationDate(a)?.getTime() ?? 0) - (publicationDate(b)?.getTime() ?? 0))
     return map
-  }, [publications])
+  }, [publications, timezone])
 
   const selectedEvents = eventsByDay.get(selectedDay) ?? []
   const selectedDate = new Date(`${selectedDay}T12:00:00`)
-  const todayKey = dayKey(new Date())
+  const todayKey = dateKeyInTimezone(new Date(), timezone)
 
   const moveMonth = (amount: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1))
@@ -91,7 +91,7 @@ export function DashboardCalendar({ publications }: { publications: PublicationR
           </div>
 
           <div className="grid grid-cols-7 border-b border-[#dedfd8] py-2 text-center text-xs font-medium text-[#838a81]">
-            {weekdays.map((day) => <div key={day}>{day}</div>)}
+            {Array.from({ length: 7 }, (_, index) => weekdays[(weekStartsOn + index) % 7]).map((day) => <div key={day}>{day}</div>)}
           </div>
           <div className="grid grid-cols-7 border-l border-[#e3e4de]">
             {days.map((day) => {
@@ -119,7 +119,7 @@ export function DashboardCalendar({ publications }: { publications: PublicationR
               const date = publicationDate(publication)
               return <li key={publication.id}>
                 <button onClick={() => setEditing(publication)} className="flex w-full gap-3 py-3 text-left hover:bg-[#eef0eb]">
-                  <span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-[#838a81]">{date ? timeFormatter.format(date) : '--:--'}</span>
+                  <span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-[#838a81]">{date ? new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit', timeZone: timezone }).format(date) : '--:--'}</span>
                   <span className="min-w-0"><span className="block truncate text-sm font-medium">{publication.title}</span><span className={`mt-1 block text-xs ${publication.status === 'published' ? 'text-[#4c7557]' : 'text-[#48627b]'}`}>{publication.status === 'published' ? 'Publicada' : 'Programada'}{publication.platforms.length ? ` · ${publication.platforms.join(', ')}` : ''}</span></span>
                 </button>
               </li>
@@ -129,7 +129,7 @@ export function DashboardCalendar({ publications }: { publications: PublicationR
         </aside>
       </div>
 
-      {(newDate !== null || editing) && <PublicationDialog key={editing?.id ?? newDate ?? 'new'} publication={editing} initialDate={newDate ?? ''} onClose={closeDialog} />}
+      {(newDate !== null || editing) && <PublicationDialog key={editing?.id ?? newDate ?? 'new'} publication={editing} initialDate={newDate ?? ''} onClose={closeDialog} timezone={timezone} />}
     </section>
   )
 }

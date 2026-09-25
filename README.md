@@ -1,33 +1,39 @@
-# publicaciones
+# norte.
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+Espacio de trabajo en español para organizar publicaciones, calendario, biblioteca de medios, ideas y métricas. La aplicación usa Next.js y Supabase Auth, Postgres y Storage.
 
-## Built with v0
+## Desarrollo local
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+Requisitos: Node.js 22.18 o posterior, pnpm y Docker Desktop si se ejecutarán las pruebas locales de base de datos.
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_SIBkqpd2mNelCMehvvrXwrEQoMtc)
+1. Instala dependencias con `pnpm install --frozen-lockfile`.
+2. Copia `.env.example` como `.env.local` y configura la URL y publishable key del proyecto Supabase de desarrollo. Ajusta `NEXT_PUBLIC_SITE_URL` al origen local que usarás.
+3. Inicia la aplicación con `pnpm dev` y abre la URL que indique Next.js.
 
-## Getting Started
+Variables necesarias:
 
-First, run the development server:
+- `NEXT_PUBLIC_SUPABASE_URL`: URL del proyecto Supabase.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: clave pública publishable; nunca uses aquí una service-role key.
+- `NEXT_PUBLIC_SITE_URL`: origen público de la aplicación, usado por confirmación y recuperación de contraseña.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
+En Supabase Auth, permite como redirect URL `<NEXT_PUBLIC_SITE_URL>/auth/callback`. La recuperación usa esa ruta y continúa en `/reset-password`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Base de datos
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Las migraciones versionadas están en `supabase/migrations/`. Incluyen perfiles, publicaciones, ideas, métricas, conexiones, preferencias, medios relacionados, secretos en el esquema privado y el bucket privado `publication-media`.
 
-## Learn More
+Para una base local limpia, ejecuta `pnpm db:start` y luego `pnpm db:test`. No conectes una base de producción para pruebas.
 
-To learn more, take a look at the following resources:
+Antes de aplicar migraciones a una base remota, inspecciona el esquema y el historial de migraciones. Si V0 u otra herramienta ya creó las tablas, no ejecutes `db push` a ciegas: primero compara el estado remoto con cada migración para evitar duplicar o alterar objetos existentes. No se debe afirmar que el esquema remoto está sincronizado hasta verificarlo en el proyecto correcto.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+## Comprobaciones
+
+- `pnpm test:unit`: pruebas de conversiones de fechas y zonas horarias.
+- `pnpm typecheck`: comprobación TypeScript.
+- `pnpm lint`: ESLint.
+- `pnpm build`: compilación de producción.
+- `pnpm db:test`: pruebas pgTAP (requiere el Supabase local activo).
+
+## Integraciones pendientes
+
+La pantalla de Conexiones muestra solo cuentas realmente guardadas; OAuth y sincronización por red social requieren registrar aplicaciones y secretos de cada proveedor. La preferencia de resumen por correo se guarda, pero el envío requiere configurar un proveedor de correo.

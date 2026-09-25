@@ -100,12 +100,13 @@ type DashboardLibraryProps = {
   publications: PublicationRecord[]
   mediaError: boolean
   storageError: boolean
+  initialSearch?: string
 }
 
-export function DashboardLibrary({ assets: initialAssets, publications, mediaError, storageError }: DashboardLibraryProps) {
+export function DashboardLibrary({ assets: initialAssets, publications, mediaError, storageError, initialSearch = '' }: DashboardLibraryProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialSearch)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')

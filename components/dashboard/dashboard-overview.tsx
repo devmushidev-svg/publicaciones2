@@ -14,6 +14,8 @@ import type { OverviewData } from '@/lib/dashboard/overview'
 type DashboardOverviewProps = {
   userName: string
   overview: OverviewData
+  onNavigate: (section: string) => void
+  onCreatePublication: () => void
 }
 
 const numberFormat = new Intl.NumberFormat('es', { notation: 'compact', maximumFractionDigits: 1 })
@@ -23,9 +25,10 @@ function timeLabel(value: string | null, timeZone: string) {
   return new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit', timeZone }).format(new Date(value))
 }
 
-export function DashboardOverview({ userName, overview }: DashboardOverviewProps) {
+export function DashboardOverview({ userName, overview, onNavigate, onCreatePublication }: DashboardOverviewProps) {
   const bars = overview.chart.map((value) => overview.chart.length ? (value / Math.max(...overview.chart, 1)) * 100 : 0)
   const greetingName = userName.split(/\s+/)[0]
+  const hasReachData = overview.chart.some((value) => value > 0)
 
   return (
     <div className="mx-auto max-w-[1400px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
@@ -35,7 +38,7 @@ export function DashboardOverview({ userName, overview }: DashboardOverviewProps
           <h1 className="font-serif text-4xl sm:text-5xl">Buenos días, {greetingName}<span className="text-[#c18d32]">.</span></h1>
           <p className="mt-3 max-w-lg text-sm leading-6 text-[#747b72]">Este es el resumen de tu espacio de contenido.</p>
         </div>
-        <button className="flex w-fit items-center gap-2 rounded-xl bg-[#222824] px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-[#39413b]"><Plus className="size-4" />Crear publicación</button>
+        <button onClick={onCreatePublication} className="flex w-fit items-center gap-2 rounded-xl bg-[#222824] px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-[#39413b]"><Plus className="size-4" />Crear publicación</button>
       </div>
 
       {overview.error && <p role="status" className="mb-5 rounded-md border border-[#e7c8a2] bg-[#fff8ea] px-4 py-3 text-sm text-[#765c2c]">Algunos datos no se pudieron cargar. Actualiza la página para volver a intentarlo.</p>}
@@ -48,17 +51,17 @@ export function DashboardOverview({ userName, overview }: DashboardOverviewProps
           <div className="mt-8 flex flex-wrap items-center gap-3"><span className="rounded-full border border-white/15 px-3 py-2 text-xs text-[#b4bdb4]">{overview.ideas.length} {overview.ideas.length === 1 ? 'idea pendiente' : 'ideas pendientes'}</span></div>
         </div>
         <div className="rounded-3xl border border-[#dedfd8] bg-[#fbfbf8] p-6 sm:p-7">
-          <div className="flex items-center justify-between"><div><p className="text-sm text-[#7f877e]">Alcance de ayer</p><p className="mt-2 text-3xl font-semibold">{numberFormat.format(overview.reachYesterday)}</p></div><div className="flex size-11 items-center justify-center rounded-2xl bg-[#e2eee5] text-[#518060]"><TrendingUp className="size-5" /></div></div>
+          <div className="flex items-center justify-between"><div><p className="text-sm text-[#7f877e]">Alcance de ayer</p><p className="mt-2 text-3xl font-semibold">{hasReachData ? numberFormat.format(overview.reachYesterday) : 'Sin datos'}</p></div><div className="flex size-11 items-center justify-center rounded-2xl bg-[#e2eee5] text-[#518060]"><TrendingUp className="size-5" /></div></div>
           <div aria-label="Alcance diario de los últimos doce días" className="mt-7 flex h-14 items-end gap-1.5">
             {bars.map((height, index) => <div key={index} className={`flex-1 rounded-t-sm ${height > 0 ? 'bg-[#6e9d79]' : 'bg-[#e5e9e2]'}`} style={{ height: `${Math.max(height, 5)}%` }} />)}
           </div>
-          <div className="mt-3 flex justify-between gap-2 text-[11px] text-[#9aa198]"><span>Últimos 12 días</span><span>{overview.reachChange === null ? 'Sin comparación' : `${overview.reachChange >= 0 ? '+' : ''}${overview.reachChange.toFixed(1)}% vs. día anterior`}</span></div>
+          <div className="mt-3 flex justify-between gap-2 text-[11px] text-[#9aa198]"><span>Últimos 12 días</span><span>{!hasReachData ? 'Aún no hay mediciones' : overview.reachChange === null ? 'Sin comparación' : `${overview.reachChange >= 0 ? '+' : ''}${overview.reachChange.toFixed(1)}% vs. día anterior`}</span></div>
         </div>
       </section>
 
       <section className="mt-8 grid gap-8 xl:grid-cols-[1.35fr_0.65fr]">
         <div>
-          <div className="mb-4 flex items-center justify-between"><div><h2 className="font-serif text-2xl">Publicaciones de hoy</h2><p className="mt-1 text-sm text-[#858c84]">Tu calendario para mantener el ritmo.</p></div><button className="text-sm font-medium text-[#65705f] hover:underline">Ver calendario</button></div>
+          <div className="mb-4 flex items-center justify-between"><div><h2 className="font-serif text-2xl">Publicaciones de hoy</h2><p className="mt-1 text-sm text-[#858c84]">Tu calendario para mantener el ritmo.</p></div><button onClick={() => onNavigate('Calendario')} className="text-sm font-medium text-[#65705f] hover:underline">Ver calendario</button></div>
           <div className="overflow-hidden rounded-2xl border border-[#dedfd8] bg-[#fbfbf8]">
             {overview.publications.length ? overview.publications.map((post, index) => (
               <div key={post.id} className={`flex items-center gap-4 px-4 py-4 sm:px-5 ${index !== overview.publications.length - 1 ? 'border-b border-[#e5e6e0]' : ''}`}>
@@ -72,16 +75,16 @@ export function DashboardOverview({ userName, overview }: DashboardOverviewProps
         <div>
           <div className="mb-4 flex items-center justify-between"><div><h2 className="font-serif text-2xl">Ideas nuevas</h2><p className="mt-1 text-sm text-[#858c84]">Tu lista para cuando necesites inspiración.</p></div><Lightbulb className="size-5 text-[#c18d32]" /></div>
           <div className="flex flex-col gap-3">
-            {overview.ideas.length ? overview.ideas.map((idea, index) => <button key={idea.id} className="group flex items-center gap-3 rounded-2xl border border-[#dedfd8] bg-[#fbfbf8] p-4 text-left hover:border-[#c5cfc1]"><span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#f1e6c9] text-xs font-semibold text-[#87682b]">{String(index + 1).padStart(2, '0')}</span><span className="flex-1 text-sm font-medium leading-5">{idea.title}</span><ArrowUpRight className="size-4 text-[#a2aaa1] transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></button>) : <p className="rounded-2xl border border-[#dedfd8] bg-[#fbfbf8] p-4 text-sm text-[#858c84]">Todavía no hay ideas guardadas.</p>}
+            {overview.ideas.length ? overview.ideas.map((idea, index) => <button key={idea.id} onClick={() => onNavigate('Ideas')} className="group flex items-center gap-3 rounded-2xl border border-[#dedfd8] bg-[#fbfbf8] p-4 text-left hover:border-[#c5cfc1]"><span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#f1e6c9] text-xs font-semibold text-[#87682b]">{String(index + 1).padStart(2, '0')}</span><span className="flex-1 text-sm font-medium leading-5">{idea.title}</span><ArrowUpRight className="size-4 text-[#a2aaa1] transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></button>) : <p className="rounded-2xl border border-[#dedfd8] bg-[#fbfbf8] p-4 text-sm text-[#858c84]">Todavía no hay ideas guardadas.</p>}
           </div>
-          <button className="mt-4 flex items-center gap-2 text-sm font-medium text-[#65705f] hover:underline"><Lightbulb className="size-4" />Añadir una idea</button>
+          <button onClick={() => onNavigate('Ideas')} className="mt-4 flex items-center gap-2 text-sm font-medium text-[#65705f] hover:underline"><Lightbulb className="size-4" />Añadir una idea</button>
         </div>
       </section>
 
       <section className="mt-10 grid gap-4 sm:grid-cols-3">
-        <button className="flex items-center gap-3 rounded-2xl border border-dashed border-[#c8ccc4] bg-transparent p-4 text-left hover:bg-[#eef0eb]"><FilePlus2 className="size-5 text-[#778476]" /><span><strong className="block text-sm">Crear desde cero</strong><small className="text-xs text-[#929990]">Escribe una nueva publicación</small></span></button>
-        <button className="flex items-center gap-3 rounded-2xl border border-dashed border-[#c8ccc4] bg-transparent p-4 text-left hover:bg-[#eef0eb]"><BookOpen className="size-5 text-[#778476]" /><span><strong className="block text-sm">Explorar biblioteca</strong><small className="text-xs text-[#929990]">Reutiliza contenido existente</small></span></button>
-        <button className="flex items-center gap-3 rounded-2xl border border-dashed border-[#c8ccc4] bg-transparent p-4 text-left hover:bg-[#eef0eb]"><Hash className="size-5 text-[#778476]" /><span><strong className="block text-sm">Ver rendimiento</strong><small className="text-xs text-[#929990]">Aprende qué funciona mejor</small></span></button>
+        <button onClick={onCreatePublication} className="flex items-center gap-3 rounded-2xl border border-dashed border-[#c8ccc4] bg-transparent p-4 text-left hover:bg-[#eef0eb]"><FilePlus2 className="size-5 text-[#778476]" /><span><strong className="block text-sm">Crear desde cero</strong><small className="text-xs text-[#929990]">Escribe una nueva publicación</small></span></button>
+        <button onClick={() => onNavigate('Biblioteca')} className="flex items-center gap-3 rounded-2xl border border-dashed border-[#c8ccc4] bg-transparent p-4 text-left hover:bg-[#eef0eb]"><BookOpen className="size-5 text-[#778476]" /><span><strong className="block text-sm">Explorar biblioteca</strong><small className="text-xs text-[#929990]">Reutiliza contenido existente</small></span></button>
+        <button onClick={() => onNavigate('Rendimiento')} className="flex items-center gap-3 rounded-2xl border border-dashed border-[#c8ccc4] bg-transparent p-4 text-left hover:bg-[#eef0eb]"><Hash className="size-5 text-[#778476]" /><span><strong className="block text-sm">Ver rendimiento</strong><small className="text-xs text-[#929990]">Aprende qué funciona mejor</small></span></button>
       </section>
     </div>
   )

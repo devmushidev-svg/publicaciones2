@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { PublicationActionState, PublicationStatus } from '@/lib/dashboard/publications'
 import { publicationPlatforms } from '@/lib/dashboard/publications'
+import { dateTimeInputToIso } from '@/lib/date-time'
 
 const statuses = new Set<PublicationStatus>(['draft', 'scheduled', 'published', 'archived'])
 const platformValues = new Set<string>(publicationPlatforms.map(({ value }) => value))
@@ -26,21 +27,22 @@ export async function savePublication(
   const category = value(formData, 'category')
   const status = value(formData, 'status') as PublicationStatus
   const scheduledValue = value(formData, 'scheduled_for')
+  const timezone = value(formData, 'timezone') || 'America/Tegucigalpa'
   const platforms = formData.getAll('platforms').map(String).filter((platform) => platformValues.has(platform))
 
   if (!title || title.length > 200) return { error: 'El título es obligatorio y debe tener máximo 200 caracteres.' }
   if (!statuses.has(status)) return { error: 'Selecciona un estado válido.' }
   if (status === 'scheduled' && !scheduledValue) return { error: 'Indica cuándo se publicará.' }
 
-  const scheduledFor = scheduledValue ? new Date(scheduledValue) : null
-  if (scheduledFor && Number.isNaN(scheduledFor.getTime())) return { error: 'La fecha de programación no es válida.' }
+  const scheduledFor = scheduledValue ? dateTimeInputToIso(scheduledValue, timezone) : null
+  if (scheduledValue && !scheduledFor) return { error: 'La fecha u hora no existe en la zona horaria seleccionada.' }
 
   const payload = {
     title,
     body,
     category: category || null,
     status,
-    scheduled_for: status === 'scheduled' ? scheduledFor?.toISOString() : null,
+    scheduled_for: status === 'scheduled' ? scheduledFor : null,
     published_at: status === 'published' ? (value(formData, 'published_at') || new Date().toISOString()) : null,
     platforms,
   }

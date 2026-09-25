@@ -2,6 +2,7 @@ import { DashboardShell } from '@/components/dashboard-shell'
 import { redirect } from 'next/navigation'
 import { getOverviewData } from '@/lib/dashboard/overview'
 import { createClient } from '@/lib/supabase/server'
+import type { MetricRecord } from '@/components/dashboard/dashboard-performance'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,14 +12,22 @@ export default async function Page() {
   const userId = user?.id
   if (!userId) redirect('/login')
 
+  const metricsStartDate = new Date()
+  metricsStartDate.setDate(metricsStartDate.getDate() - 89)
+  const metricsStart = `${metricsStartDate.getFullYear()}-${String(metricsStartDate.getMonth() + 1).padStart(2, '0')}-${String(metricsStartDate.getDate()).padStart(2, '0')}`
+
   const [
     { data: profile },
     overview,
     { data: publications, error: publicationsError },
     { data: mediaRows, error: mediaError },
     { data: mediaLinks, error: mediaLinksError },
+    { data: ideas, error: ideasError },
+    { data: metricRows, error: metricsError },
+    { data: connectionRows, error: connectionsError },
+    { data: preferences, error: preferencesError },
   ] = await Promise.all([
-    supabase.from('profiles').select('full_name').eq('id', userId).maybeSingle(),
+    supabase.from('profiles').select('full_name,timezone').eq('id', userId).maybeSingle(),
     getOverviewData(supabase, userId),
     supabase
       .from('publications')
@@ -33,6 +42,25 @@ export default async function Page() {
       .order('created_at', { ascending: false })
       .limit(200),
     supabase.from('publication_media').select('media_asset_id,publication_id').eq('user_id', userId),
+    supabase
+      .from('ideas')
+      .select('id,title,notes,status,source,created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(200),
+    supabase
+      .from('performance_metrics')
+      .select('id,publication_id,platform,measured_on,reach,impressions,engagements,clicks')
+      .eq('user_id', userId)
+      .gte('measured_on', metricsStart)
+      .order('measured_on', { ascending: true })
+      .limit(2000),
+    supabase
+      .from('social_connections')
+      .select('id,provider,account_name,account_external_id,connected_at,last_synced_at,is_active')
+      .eq('user_id', userId)
+      .order('connected_at', { ascending: false }),
+    supabase.from('account_preferences').select('timezone,week_starts_on,email_digest').eq('user_id', userId).maybeSingle(),
   ])
 
   let storageError = false
@@ -70,5 +98,19 @@ export default async function Page() {
     assets={assets}
     mediaError={Boolean(mediaError || mediaLinksError)}
     storageError={storageError}
+    ideas={ideas ?? []}
+    ideasError={Boolean(ideasError)}
+    metrics={(metricRows ?? []) as MetricRecord[]}
+    metricsError={Boolean(metricsError)}
+    connections={connectionRows ?? []}
+    connectionsError={Boolean(connectionsError)}
+    settings={{
+      email: user.email ?? '',
+      fullName: profile?.full_name || metadataName || user.email?.split('@')[0] || '',
+      timezone: profile?.timezone || preferences?.timezone || 'America/Tegucigalpa',
+      weekStartsOn: preferences?.week_starts_on ?? 1,
+      emailDigest: preferences?.email_digest ?? true,
+      hasError: Boolean(preferencesError || !profile),
+    }}
   />
 }

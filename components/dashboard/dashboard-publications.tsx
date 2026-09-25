@@ -9,6 +9,7 @@ import {
   type PublicationRecord,
   type PublicationStatus,
 } from '@/lib/dashboard/publications'
+import { dateTimeInputValue } from '@/lib/date-time'
 
 const statusLabels: Record<PublicationStatus, string> = {
   draft: 'Borrador',
@@ -26,24 +27,18 @@ const statusStyles: Record<PublicationStatus, string> = {
 
 const filters: Array<'all' | PublicationStatus> = ['all', 'draft', 'scheduled', 'published', 'archived']
 
-function localDateTime(value: string | null) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
-}
-
-function scheduledLabel(value: string | null) {
+function scheduledLabel(value: string | null, timezone: string) {
   if (!value) return 'Sin fecha'
-  return new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  return new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone }).format(new Date(value))
 }
 
 type DialogProps = {
   publication: PublicationRecord | null
   onClose: () => void
+  timezone?: string
 }
 
-export function PublicationDialog({ publication, onClose, initialDate = '' }: DialogProps & { initialDate?: string }) {
+export function PublicationDialog({ publication, onClose, initialDate = '', timezone = 'America/Tegucigalpa' }: DialogProps & { initialDate?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [state, formAction, pending] = useActionState<PublicationActionState, FormData>(savePublication, {})
 
@@ -78,6 +73,7 @@ export function PublicationDialog({ publication, onClose, initialDate = '' }: Di
         {state.error && <p role="alert" className="mb-4 rounded-md border border-[#e7bdb0] bg-[#fff5f1] px-3 py-2.5 text-sm text-[#8c3e2f]">{state.error}</p>}
         <input type="hidden" name="id" value={publication?.id ?? ''} />
         <input type="hidden" name="published_at" value={publication?.published_at ?? ''} />
+        <input type="hidden" name="timezone" value={timezone} />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-medium sm:col-span-2">Título
@@ -92,7 +88,7 @@ export function PublicationDialog({ publication, onClose, initialDate = '' }: Di
             <input name="category" maxLength={80} defaultValue={publication?.category ?? ''} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
           </label>
           <label className="text-sm font-medium sm:col-span-2">Programar para
-            <input name="scheduled_for" type="datetime-local" defaultValue={publication ? localDateTime(publication.scheduled_for) : initialDate} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
+            <input name="scheduled_for" type="datetime-local" defaultValue={publication ? dateTimeInputValue(publication.scheduled_for, timezone) : initialDate} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
           </label>
           <fieldset className="sm:col-span-2">
             <legend className="text-sm font-medium">Plataformas</legend>
@@ -128,11 +124,13 @@ function ArchiveButton({ id }: { id: string }) {
 type DashboardPublicationsProps = {
   publications: PublicationRecord[]
   hasError: boolean
+  timezone: string
+  initialSearch?: string
 }
 
-export function DashboardPublications({ publications, hasError }: DashboardPublicationsProps) {
+export function DashboardPublications({ publications, hasError, timezone, initialSearch = '' }: DashboardPublicationsProps) {
   const [filter, setFilter] = useState<'all' | PublicationStatus>('all')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(initialSearch)
   const [editing, setEditing] = useState<PublicationRecord | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const closeDialog = useCallback(() => setDialogOpen(false), [])
@@ -188,7 +186,7 @@ export function DashboardPublications({ publications, hasError }: DashboardPubli
               <p className="mt-1 truncate text-xs text-[#838a81]">{publication.category || 'Sin categoría'}{publication.platforms.length ? ` · ${publication.platforms.join(' · ')}` : ''}</p>
             </button>
             <div className="flex items-center justify-between gap-4 sm:justify-end">
-              <p className="flex items-center gap-1.5 text-xs text-[#838a81]"><CalendarClock className="size-3.5" />{publication.status === 'published' ? scheduledLabel(publication.published_at) : scheduledLabel(publication.scheduled_for)}</p>
+              <p className="flex items-center gap-1.5 text-xs text-[#838a81]"><CalendarClock className="size-3.5" />{publication.status === 'published' ? scheduledLabel(publication.published_at, timezone) : scheduledLabel(publication.scheduled_for, timezone)}</p>
               {publication.status !== 'archived' && <ArchiveButton id={publication.id} />}
             </div>
           </article>
@@ -202,7 +200,7 @@ export function DashboardPublications({ publications, hasError }: DashboardPubli
         )}
       </div>
 
-      {dialogOpen && <PublicationDialog key={editing?.id ?? 'new'} publication={editing} onClose={closeDialog} />}
+      {dialogOpen && <PublicationDialog key={editing?.id ?? 'new'} publication={editing} onClose={closeDialog} timezone={timezone} />}
     </section>
   )
 }

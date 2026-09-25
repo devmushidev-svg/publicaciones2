@@ -1,5 +1,5 @@
 import { ArrowRight, LockKeyhole, Sparkles } from 'lucide-react'
-import { signIn, signUp } from '@/app/actions/auth'
+import { requestPasswordReset, signIn, signUp } from '@/app/actions/auth'
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string; message?: string }>
@@ -9,6 +9,8 @@ const errors: Record<string, string> = {
   credentials: 'No pudimos iniciar sesión. Revisa tu correo y contraseña.',
   signup: 'Completa tu nombre y correo; la contraseña debe tener al menos 8 caracteres.',
   confirmation: 'El enlace de confirmación no es válido o ya venció. Intenta registrarte de nuevo.',
+  reset: 'No pudimos enviar el enlace. Revisa el correo e inténtalo de nuevo.',
+  'reset-session': 'El enlace venció. Solicita uno nuevo para cambiar tu contraseña.',
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -36,6 +38,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
           {error && <p role="alert" className="mt-5 rounded-md border border-[#e7bdb0] bg-[#fff5f1] px-3 py-2.5 text-sm text-[#8c3e2f]">{errors[error] ?? errors.credentials}</p>}
           {message === 'check-email' && <p role="status" className="mt-5 rounded-md border border-[#c8d8ca] bg-[#f0f6ef] px-3 py-2.5 text-sm text-[#45694c]">Te enviamos un enlace para confirmar tu correo.</p>}
+          {message === 'reset-email' && <p role="status" className="mt-5 rounded-md border border-[#c8d8ca] bg-[#f0f6ef] px-3 py-2.5 text-sm text-[#45694c]">Si el correo corresponde a una cuenta, recibirás un enlace para restablecer la contraseña.</p>}
+          {message === 'password-updated' && <p role="status" className="mt-5 rounded-md border border-[#c8d8ca] bg-[#f0f6ef] px-3 py-2.5 text-sm text-[#45694c]">La contraseña se actualizó. Ya puedes iniciar sesión.</p>}
 
           <form className="mt-7 space-y-4">
             <label className="block text-sm font-medium">Nombre
@@ -51,6 +55,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <button formAction={signIn} className="flex h-11 items-center justify-center gap-2 rounded-md bg-[#222824] px-4 text-sm font-semibold text-white hover:bg-[#39413b]">Iniciar sesión <ArrowRight className="size-4" /></button>
               <button formAction={signUp} className="h-11 rounded-md border border-[#cdd1c8] bg-transparent px-4 text-sm font-semibold hover:bg-[#eceee8]">Crear cuenta</button>
             </div>
+            <button formAction={requestPasswordReset} formNoValidate className="pt-1 text-sm font-medium text-[#65705f] underline underline-offset-4 hover:text-[#39413b]">Olvidé mi contraseña</button>
           </form>
         </div>
       </section>
