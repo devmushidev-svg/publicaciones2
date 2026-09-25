@@ -14,4 +14,10 @@ If another tool has already created the tables remotely but did not register the
 
 The pgTAP suite covers profile and idea RLS, metric ownership, and cross-user publication/media links. The timezone conversion unit tests run separately with `pnpm test:unit`.
 
+## Publication editor migration (20260925000600)
+
+Apply `migrations/20260925000600_publication_editor.sql` only after verifying that `20260925000500_categories_and_tags.sql` is present in the target project. The migration preserves existing `publications.media_ids` links in `publication_media`, then removes the legacy column. It stops without changing the schema if any legacy link refers to a missing asset or an asset owned by another user. Resolve such rows first; do not bypass the preflight or mark the migration applied without running it.
+
+After applying, verify that `media_assets.content_sha256` exists, `publications.media_ids` no longer exists, and authenticated users can execute `save_my_publication`. Run `tests/publication_editor.test.sql` with pgTAP against a disposable database to check atomic saves and cross-account ownership. The application code that calls the RPC must be deployed only after this migration succeeds. Do not run the pgTAP file against production because it creates temporary test users inside a transaction.
+
 The app uses only the public URL and publishable key. Do not add secret or service-role keys to `NEXT_PUBLIC_*` variables.
