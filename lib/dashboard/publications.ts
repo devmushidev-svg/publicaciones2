@@ -5,6 +5,7 @@ export type PublicationRecord = {
   title: string
   body: string
   category: string | null
+  category_id: string | null
   status: PublicationStatus
   scheduled_for: string | null
   published_at: string | null

@@ -10,6 +10,7 @@ import {
   type PublicationStatus,
 } from '@/lib/dashboard/publications'
 import { dateTimeInputValue } from '@/lib/date-time'
+import type { CategoryOption } from '@/components/dashboard/dashboard-taxonomy'
 
 const statusLabels: Record<PublicationStatus, string> = {
   draft: 'Borrador',
@@ -36,9 +37,10 @@ type DialogProps = {
   publication: PublicationRecord | null
   onClose: () => void
   timezone?: string
+  categories: CategoryOption[]
 }
 
-export function PublicationDialog({ publication, onClose, initialDate = '', timezone = 'America/Tegucigalpa' }: DialogProps & { initialDate?: string }) {
+export function PublicationDialog({ publication, onClose, initialDate = '', timezone = 'America/Tegucigalpa', categories }: DialogProps & { initialDate?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [state, formAction, pending] = useActionState<PublicationActionState, FormData>(savePublication, {})
 
@@ -85,7 +87,10 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
             </select>
           </label>
           <label className="text-sm font-medium">Categoría
-            <input name="category" maxLength={80} defaultValue={publication?.category ?? ''} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
+            <select name="category_id" defaultValue={publication?.category_id ?? ''} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20">
+              <option value="">Sin categoría</option>
+              {categories.map((category) => <option key={category.id} value={category.id} disabled={category.is_archived && category.id !== publication?.category_id}>{category.name}{category.is_archived ? ' (archivada)' : ''}</option>)}
+            </select>
           </label>
           <label className="text-sm font-medium sm:col-span-2">Programar para
             <input name="scheduled_for" type="datetime-local" defaultValue={publication ? dateTimeInputValue(publication.scheduled_for, timezone) : initialDate} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
@@ -125,10 +130,11 @@ type DashboardPublicationsProps = {
   publications: PublicationRecord[]
   hasError: boolean
   timezone: string
+  categories: CategoryOption[]
   initialSearch?: string
 }
 
-export function DashboardPublications({ publications, hasError, timezone, initialSearch = '' }: DashboardPublicationsProps) {
+export function DashboardPublications({ publications, hasError, timezone, categories, initialSearch = '' }: DashboardPublicationsProps) {
   const [filter, setFilter] = useState<'all' | PublicationStatus>('all')
   const [search, setSearch] = useState(initialSearch)
   const [editing, setEditing] = useState<PublicationRecord | null>(null)
@@ -200,7 +206,7 @@ export function DashboardPublications({ publications, hasError, timezone, initia
         )}
       </div>
 
-      {dialogOpen && <PublicationDialog key={editing?.id ?? 'new'} publication={editing} onClose={closeDialog} timezone={timezone} />}
+      {dialogOpen && <PublicationDialog key={editing?.id ?? 'new'} publication={editing} onClose={closeDialog} timezone={timezone} categories={categories} />}
     </section>
   )
 }

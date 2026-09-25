@@ -24,7 +24,7 @@ export async function savePublication(
   const id = value(formData, 'id')
   const title = value(formData, 'title')
   const body = String(formData.get('body') ?? '').trim()
-  const category = value(formData, 'category')
+  const categoryId = value(formData, 'category_id')
   const status = value(formData, 'status') as PublicationStatus
   const scheduledValue = value(formData, 'scheduled_for')
   const timezone = value(formData, 'timezone') || 'America/Tegucigalpa'
@@ -37,10 +37,20 @@ export async function savePublication(
   const scheduledFor = scheduledValue ? dateTimeInputToIso(scheduledValue, timezone) : null
   if (scheduledValue && !scheduledFor) return { error: 'La fecha u hora no existe en la zona horaria seleccionada.' }
 
+  if (categoryId) {
+    const { data: category, error } = await supabase.from('categories').select('id,name,is_archived').eq('id', categoryId).eq('user_id', user.id).maybeSingle()
+    if (error || !category) return { error: 'Selecciona una categoría válida.' }
+    if (category.is_archived) {
+      if (!id) return { error: 'Esa categoría está archivada.' }
+      const { data: current } = await supabase.from('publications').select('category_id').eq('id', id).eq('user_id', user.id).maybeSingle()
+      if (current?.category_id !== categoryId) return { error: 'Esa categoría está archivada.' }
+    }
+  }
+
   const payload = {
     title,
     body,
-    category: category || null,
+    category_id: categoryId || null,
     status,
     scheduled_for: status === 'scheduled' ? scheduledFor : null,
     published_at: status === 'published' ? (value(formData, 'published_at') || new Date().toISOString()) : null,

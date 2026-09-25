@@ -15,12 +15,16 @@ import { DashboardPerformance, type MetricRecord } from '@/components/dashboard/
 import { DashboardConnections, type SocialConnectionRecord } from '@/components/dashboard/dashboard-connections'
 import { DashboardSettings } from '@/components/dashboard/dashboard-settings'
 import { DashboardSearch } from '@/components/dashboard/dashboard-search'
+import { DashboardTaxonomy, type CategoryOption, type TagOption } from '@/components/dashboard/dashboard-taxonomy'
 
 type DashboardShellProps = {
   userName: string
   overview: OverviewData
   publications: PublicationRecord[]
   publicationsError: boolean
+  categories: CategoryOption[]
+  tags: TagOption[]
+  taxonomyError: boolean
   assets: MediaAssetRecord[]
   mediaError: boolean
   storageError: boolean
@@ -33,7 +37,7 @@ type DashboardShellProps = {
   settings: { email: string; fullName: string; timezone: string; weekStartsOn: number; emailDigest: boolean; hasError: boolean }
 }
 
-export function DashboardShell({ userName, overview, publications, publicationsError, assets, mediaError, storageError, ideas, ideasError, metrics, metricsError, connections, connectionsError, settings }: DashboardShellProps) {
+export function DashboardShell({ userName, overview, publications, publicationsError, categories, tags, taxonomyError, assets, mediaError, storageError, ideas, ideasError, metrics, metricsError, connections, connectionsError, settings }: DashboardShellProps) {
   const [active, setActive] = useState('Inicio')
   const [searchTarget, setSearchTarget] = useState<{ section: string; query: string } | null>(null)
   const [homePublicationOpen, setHomePublicationOpen] = useState(false)
@@ -88,7 +92,7 @@ export function DashboardShell({ userName, overview, publications, publicationsE
         {active === 'Biblioteca'
           ? <DashboardLibrary key={`library-${activeSearch}`} assets={assets} publications={publications} mediaError={mediaError} storageError={storageError} initialSearch={activeSearch} />
           : active === 'Calendario'
-            ? <DashboardCalendar publications={publications} weekStartsOn={settings.weekStartsOn} timezone={settings.timezone} />
+          ? <DashboardCalendar publications={publications} categories={categories} weekStartsOn={settings.weekStartsOn} timezone={settings.timezone} />
             : active === 'Ideas'
               ? <DashboardIdeas key={`ideas-${activeSearch}`} ideas={ideas} hasError={ideasError} initialSearch={activeSearch} />
               : active === 'Rendimiento'
@@ -96,12 +100,12 @@ export function DashboardShell({ userName, overview, publications, publicationsE
                 : active === 'Conexiones'
                   ? <DashboardConnections connections={connections} hasError={connectionsError} />
                   : active === 'Configuración'
-                    ? <DashboardSettings {...settings} />
+                    ? <><DashboardSettings {...settings} /><DashboardTaxonomy categories={categories} tags={tags} hasError={taxonomyError} /></>
                     : active === 'Publicaciones'
-                      ? <DashboardPublications key={`publications-${activeSearch}`} publications={publications} hasError={publicationsError} timezone={settings.timezone} initialSearch={activeSearch} />
+                      ? <DashboardPublications key={`publications-${activeSearch}`} publications={publications} hasError={publicationsError} timezone={settings.timezone} categories={categories} initialSearch={activeSearch} />
                       : <DashboardOverview userName={userName} overview={overview} onNavigate={(section) => navigateToSection(section)} onCreatePublication={() => setHomePublicationOpen(true)} />}
       </main>
-      {homePublicationOpen && <PublicationDialog publication={null} onClose={() => setHomePublicationOpen(false)} timezone={settings.timezone} />}
+      {homePublicationOpen && <PublicationDialog publication={null} onClose={() => setHomePublicationOpen(false)} timezone={settings.timezone} categories={categories} />}
       <DashboardSearch open={searchOpen} onClose={() => setSearchOpen(false)} onNavigate={navigateToSection} publications={publications} ideas={ideas} assets={assets} />
     </div>
   )

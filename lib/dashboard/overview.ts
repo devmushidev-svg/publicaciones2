@@ -91,7 +91,7 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
   const [publicationsResult, ideasResult, metricsResult] = await Promise.all([
     supabase
       .from('publications')
-      .select('id,title,category,scheduled_for,platforms')
+      .select('id,title,category_id,categories(name),scheduled_for,platforms')
       .eq('user_id', userId)
       .eq('status', 'scheduled')
       .gte('scheduled_for', todayStartUtc)
@@ -126,7 +126,18 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
   return {
     timezone,
     todayLabel: new Intl.DateTimeFormat('es', { dateStyle: 'full', timeZone: timezone }).format(new Date()),
-    publications: publicationsResult.data ?? [],
+    publications: ((publicationsResult.data ?? []) as unknown as Array<{
+      id: string
+      title: string
+      category_id: string | null
+      categories: { name: string } | { name: string }[] | null
+      scheduled_for: string | null
+      platforms: string[]
+    }>).map((publication) => {
+      const relation = publication.categories
+      const category = Array.isArray(relation) ? relation[0]?.name : relation?.name
+      return { id: publication.id, title: publication.title, category: category ?? null, scheduled_for: publication.scheduled_for, platforms: publication.platforms }
+    }),
     ideas: ideasResult.data ?? [],
     chart,
     reachYesterday,

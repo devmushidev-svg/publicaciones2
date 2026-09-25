@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { getOverviewData } from '@/lib/dashboard/overview'
 import { createClient } from '@/lib/supabase/server'
 import type { MetricRecord } from '@/components/dashboard/dashboard-performance'
+import type { CategoryOption, TagOption } from '@/components/dashboard/dashboard-taxonomy'
+import type { PublicationRecord } from '@/lib/dashboard/publications'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +22,8 @@ export default async function Page() {
     { data: profile },
     overview,
     { data: publications, error: publicationsError },
+    { data: categoryRows, error: categoriesError },
+    { data: tagRows, error: tagsError },
     { data: mediaRows, error: mediaError },
     { data: mediaLinks, error: mediaLinksError },
     { data: ideas, error: ideasError },
@@ -31,10 +35,12 @@ export default async function Page() {
     getOverviewData(supabase, userId),
     supabase
       .from('publications')
-      .select('id,title,body,category,status,scheduled_for,published_at,platforms,created_at')
+      .select('id,title,body,category_id,categories(name),status,scheduled_for,published_at,platforms,created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(100),
+    supabase.from('categories').select('id,name,color,is_archived').eq('user_id', userId).order('name'),
+    supabase.from('tags').select('id,name,is_archived').eq('user_id', userId).order('name'),
     supabase
       .from('media_assets')
       .select('id,storage_path,file_name,mime_type,byte_size,width,height,alt_text,created_at')
@@ -86,6 +92,14 @@ export default async function Page() {
     signed_url: signedUrls.get(asset.storage_path) ?? null,
     publicationIds: publicationsByMedia.get(asset.id) ?? [],
   }))
+  const categoryOptions = (categoryRows ?? []) as CategoryOption[]
+  const tagOptions = (tagRows ?? []) as TagOption[]
+  const publicationRows = (publications ?? []) as unknown as Array<PublicationRecord & { categories: { name: string } | { name: string }[] | null }>
+  const publicationRecords = publicationRows.map((publication) => {
+    const joinedCategory = publication.categories
+    const categoryName = Array.isArray(joinedCategory) ? joinedCategory[0]?.name : joinedCategory?.name
+    return { ...publication, category: categoryName ?? null }
+  })
 
   const metadataName = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : ''
   const userName = profile?.full_name || metadataName || user.email?.split('@')[0] || 'Tu cuenta'
@@ -93,8 +107,11 @@ export default async function Page() {
   return <DashboardShell
     userName={userName}
     overview={overview}
-    publications={publications ?? []}
+    publications={publicationRecords}
     publicationsError={Boolean(publicationsError)}
+    categories={categoryOptions}
+    tags={tagOptions}
+    taxonomyError={Boolean(categoriesError || tagsError)}
     assets={assets}
     mediaError={Boolean(mediaError || mediaLinksError)}
     storageError={storageError}
