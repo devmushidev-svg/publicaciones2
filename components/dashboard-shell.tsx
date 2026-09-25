@@ -7,15 +7,20 @@ import { DashboardSidebar } from '@/components/dashboard/dashboard-sidebar'
 import type { OverviewData } from '@/lib/dashboard/overview'
 import type { PublicationRecord } from '@/lib/dashboard/publications'
 import { DashboardPublications } from '@/components/dashboard/dashboard-publications'
+import { DashboardLibrary } from '@/components/dashboard/dashboard-library'
+import type { MediaAssetRecord } from '@/lib/dashboard/library'
 
 type DashboardShellProps = {
   userName: string
   overview: OverviewData
   publications: PublicationRecord[]
   publicationsError: boolean
+  assets: MediaAssetRecord[]
+  mediaError: boolean
+  storageError: boolean
 }
 
-export function DashboardShell({ userName, overview, publications, publicationsError }: DashboardShellProps) {
+export function DashboardShell({ userName, overview, publications, publicationsError, assets, mediaError, storageError }: DashboardShellProps) {
   const [active, setActive] = useState('Inicio')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const mobileSidebarRef = useRef<HTMLDialogElement>(null)
@@ -48,9 +53,11 @@ export function DashboardShell({ userName, overview, publications, publicationsE
 
       <main className="lg:ml-[248px]">
         <DashboardHeader onOpenMenu={() => setSidebarOpen(true)} menuOpen={sidebarOpen} userName={userName} />
-        {active === 'Publicaciones'
-          ? <DashboardPublications publications={publications} hasError={publicationsError} />
-          : <DashboardOverview userName={userName} overview={overview} />}
+        {active === 'Biblioteca'
+          ? <DashboardLibrary assets={assets} publications={publications} mediaError={mediaError} storageError={storageError} />
+          : active === 'Publicaciones'
+            ? <DashboardPublications publications={publications} hasError={publicationsError} />
+            : <DashboardOverview userName={userName} overview={overview} />}
       </main>
     </div>
   )

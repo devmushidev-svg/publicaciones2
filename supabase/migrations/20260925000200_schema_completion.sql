@@ -17,6 +17,7 @@ drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_select_own on public.profiles for select to authenticated using ((select auth.uid()) = id);
 create policy profiles_update_own on public.profiles for update to authenticated using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 
+drop trigger if exists on_auth_user_created_preferences on auth.users;
 create or replace function private.handle_new_user() returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   insert into public.profiles (id, full_name) values (new.id, nullif(pg_catalog.left(pg_catalog.btrim(new.raw_user_meta_data ->> 'full_name'), 100), '')) on conflict (id) do nothing;
@@ -33,6 +34,8 @@ revoke all on function private.set_profile_updated_at() from public, anon, authe
 drop trigger if exists set_profile_updated_at on public.profiles;
 create trigger set_profile_updated_at before update on public.profiles for each row execute function private.set_profile_updated_at();
 
+create unique index if not exists publications_id_user_id_key on public.publications(id, user_id);
+create unique index if not exists media_assets_id_user_id_key on public.media_assets(id, user_id);
 create table if not exists public.publication_media (
   publication_id uuid not null,
   media_asset_id uuid not null,
@@ -43,8 +46,6 @@ create table if not exists public.publication_media (
   foreign key (publication_id, user_id) references public.publications(id, user_id) on delete cascade,
   foreign key (media_asset_id, user_id) references public.media_assets(id, user_id) on delete cascade
 );
-create unique index if not exists publications_id_user_id_key on public.publications(id, user_id);
-create unique index if not exists media_assets_id_user_id_key on public.media_assets(id, user_id);
 create index if not exists publication_media_user_idx on public.publication_media(user_id, publication_id, sort_order);
 alter table public.publication_media enable row level security;
 revoke all on public.publication_media from public, anon;
@@ -68,7 +69,6 @@ create table if not exists private.social_connection_secrets (
   updated_at timestamptz not null default now(),
   foreign key (social_connection_id, user_id) references public.social_connections(id, user_id) on delete cascade
 );
-create unique index if not exists social_connections_id_user_id_key on public.social_connections(id, user_id);
 revoke all on table private.social_connection_secrets from public, anon, authenticated;
 
 create index if not exists performance_metrics_publication_owner_idx on public.performance_metrics(publication_id, user_id);
