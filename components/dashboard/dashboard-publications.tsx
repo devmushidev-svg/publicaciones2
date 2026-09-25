@@ -1,7 +1,9 @@
 'use client'
 
+import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, CalendarClock, FilePlus2, Search, X } from 'lucide-react'
+import { Archive, ArrowUp, CalendarClock, FilePlus2, Image as ImageIcon, Search, Video, X } from 'lucide-react'
 import { archivePublication, savePublication } from '@/app/actions/publications'
 import {
   publicationPlatforms,
@@ -10,7 +12,8 @@ import {
   type PublicationStatus,
 } from '@/lib/dashboard/publications'
 import { dateTimeInputValue } from '@/lib/date-time'
-import type { CategoryOption } from '@/components/dashboard/dashboard-taxonomy'
+import type { CategoryOption, TagOption } from '@/components/dashboard/dashboard-taxonomy'
+import type { MediaAssetRecord } from '@/lib/dashboard/library'
 
 const statusLabels: Record<PublicationStatus, string> = {
   draft: 'Borrador',
@@ -38,11 +41,19 @@ type DialogProps = {
   onClose: () => void
   timezone?: string
   categories: CategoryOption[]
+  tags: TagOption[]
+  assets: MediaAssetRecord[]
 }
 
-export function PublicationDialog({ publication, onClose, initialDate = '', timezone = 'America/Tegucigalpa', categories }: DialogProps & { initialDate?: string }) {
+export function PublicationDialog({ publication, onClose, initialDate = '', timezone = 'America/Tegucigalpa', categories, tags, assets }: DialogProps & { initialDate?: string }) {
+  const router = useRouter()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [state, formAction, pending] = useActionState<PublicationActionState, FormData>(savePublication, {})
+  const [selectedMedia, setSelectedMedia] = useState<string[]>(publication?.mediaAssetIds ?? [])
+  const [selectedTags, setSelectedTags] = useState<string[]>(publication?.tagIds ?? [])
+  const [mediaQuery, setMediaQuery] = useState('')
+  const visibleAssets = assets.filter((asset) => `${asset.file_name} ${asset.alt_text ?? ''}`.toLocaleLowerCase('es').includes(mediaQuery.trim().toLocaleLowerCase('es')))
+  const availableTags = tags.filter((tag) => !tag.is_archived || selectedTags.includes(tag.id))
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -53,8 +64,14 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
   }, [])
 
   useEffect(() => {
-    if (state.success) onClose()
-  }, [state.success, onClose])
+    if (state.success) {
+      onClose()
+      router.refresh()
+    }
+  }, [state.success, onClose, router])
+
+  const toggleMedia = (id: string) => setSelectedMedia((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+  const toggleTag = (id: string) => setSelectedTags((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
 
   return (
     <dialog
@@ -76,6 +93,8 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
         <input type="hidden" name="id" value={publication?.id ?? ''} />
         <input type="hidden" name="published_at" value={publication?.published_at ?? ''} />
         <input type="hidden" name="timezone" value={timezone} />
+        {selectedMedia.map((id) => <input key={id} type="hidden" name="media_asset_ids" value={id} />)}
+        {selectedTags.map((id) => <input key={id} type="hidden" name="tag_ids" value={id} />)}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-medium sm:col-span-2">Título
@@ -106,6 +125,29 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
           </label>
         </div>
 
+        <fieldset className="mt-5 border-t border-[#dedfd8] pt-5">
+          <legend className="sr-only">Archivos de la publicación</legend>
+          <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-medium">Imágenes y videos</p><span className="text-xs text-[#838a81]">{selectedMedia.length} seleccionados · el primero es la portada</span></div>
+          <label className="mt-3 block"><span className="sr-only">Buscar archivos para esta publicación</span><input type="search" value={mediaQuery} onChange={(event) => setMediaQuery(event.target.value)} placeholder="Buscar archivos" className="h-9 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 text-sm outline-none focus:border-[#71866f]" /></label>
+          {assets.length ? <div className="mt-3 max-h-48 space-y-1 overflow-y-auto border-y border-[#e3e4de] py-2">
+            {visibleAssets.map((asset) => <div key={asset.id} className="flex items-center gap-2 rounded px-1 py-1 hover:bg-[#eef0eb]">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-xs">
+                <input type="checkbox" checked={selectedMedia.includes(asset.id)} onChange={() => toggleMedia(asset.id)} className="size-4 shrink-0 accent-[#526e58]" />
+                <span className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded bg-[#e9ece6]">{asset.signed_url && asset.mime_type.startsWith('image/') ? <Image src={asset.signed_url} alt="" fill unoptimized className="object-cover" /> : asset.mime_type.startsWith('video/') ? <Video className="size-4" /> : <ImageIcon className="size-4" />}</span>
+                <span className="min-w-0 truncate">{asset.file_name}</span>
+              </label>
+              {selectedMedia.includes(asset.id) && selectedMedia[0] !== asset.id && <button type="button" onClick={() => setSelectedMedia((current) => [asset.id, ...current.filter((item) => item !== asset.id)])} title="Usar como portada" aria-label={`Usar ${asset.file_name} como portada`} className="rounded p-1.5 text-[#65745f] hover:bg-[#e1e8de]"><ArrowUp className="size-4" /></button>}
+              {selectedMedia[0] === asset.id && <span className="shrink-0 text-[11px] font-medium text-[#526e58]">Portada</span>}
+            </div>)}
+            {!visibleAssets.length && <p className="py-5 text-center text-xs text-[#838a81]">No hay archivos que coincidan.</p>}
+          </div> : <p className="mt-2 text-xs text-[#838a81]">Sube una imagen en Biblioteca para agregarla a esta publicación.</p>}
+        </fieldset>
+
+        <fieldset className="mt-5 border-t border-[#dedfd8] pt-5">
+          <legend className="text-sm font-medium">Etiquetas</legend>
+          {availableTags.length ? <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">{availableTags.map((tag) => <label key={tag.id} className="flex items-center gap-2 text-xs text-[#555d55]"><input type="checkbox" checked={selectedTags.includes(tag.id)} onChange={() => toggleTag(tag.id)} className="size-4 accent-[#526e58]" />{tag.name}{tag.is_archived ? ' (archivada)' : ''}</label>)}</div> : <p className="mt-2 text-xs text-[#838a81]">Crea etiquetas en Configuración para clasificar tus publicaciones.</p>}
+        </fieldset>
+
         <div className="mt-6 flex justify-end gap-3 border-t border-[#e1e2dc] pt-4">
           <button type="button" onClick={() => dialogRef.current?.close()} className="h-10 rounded-md px-4 text-sm font-medium text-[#60685f] hover:bg-[#e8ebe3]">Cancelar</button>
           <button type="submit" disabled={pending} className="h-10 rounded-md bg-[#222824] px-4 text-sm font-semibold text-white hover:bg-[#39413b] disabled:opacity-60">{pending ? 'Guardando…' : 'Guardar publicación'}</button>
@@ -115,8 +157,10 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
   )
 }
 
-function ArchiveButton({ id }: { id: string }) {
+export function ArchiveButton({ id }: { id: string }) {
+  const router = useRouter()
   const [state, formAction, pending] = useActionState<PublicationActionState, FormData>(archivePublication, {})
+  useEffect(() => { if (state.success) router.refresh() }, [router, state.success])
   return (
     <form action={formAction} className="flex items-center gap-2">
       <input type="hidden" name="id" value={id} />
@@ -131,15 +175,18 @@ type DashboardPublicationsProps = {
   hasError: boolean
   timezone: string
   categories: CategoryOption[]
+  tags: TagOption[]
+  assets: MediaAssetRecord[]
   initialSearch?: string
 }
 
-export function DashboardPublications({ publications, hasError, timezone, categories, initialSearch = '' }: DashboardPublicationsProps) {
+export function DashboardPublications({ publications, hasError, timezone, categories, tags, assets, initialSearch = '' }: DashboardPublicationsProps) {
   const [filter, setFilter] = useState<'all' | PublicationStatus>('all')
   const [search, setSearch] = useState(initialSearch)
   const [editing, setEditing] = useState<PublicationRecord | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const closeDialog = useCallback(() => setDialogOpen(false), [])
+  const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets])
 
   const counts = useMemo(() => ({
     all: publications.length,
@@ -187,9 +234,12 @@ export function DashboardPublications({ publications, hasError, timezone, catego
       <div className="mt-2">
         {visible.length ? visible.map((publication) => (
           <article key={publication.id} className="flex flex-col gap-3 border-b border-[#e3e4de] py-4 sm:flex-row sm:items-center">
-            <button onClick={() => openEdit(publication)} className="min-w-0 flex-1 text-left">
+            <button onClick={() => openEdit(publication)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+              <span className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[#e9ece6] text-[#71816e]">{(() => { const cover = assetById.get(publication.mediaAssetIds[0]); return cover?.signed_url && cover.mime_type.startsWith('image/') ? <Image src={cover.signed_url} alt="" fill unoptimized className="object-cover" /> : <ImageIcon className="size-5" /> })()}</span>
+              <span className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-sm font-semibold">{publication.title}</h2><span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${statusStyles[publication.status]}`}>{statusLabels[publication.status]}</span></div>
               <p className="mt-1 truncate text-xs text-[#838a81]">{publication.category || 'Sin categoría'}{publication.platforms.length ? ` · ${publication.platforms.join(' · ')}` : ''}</p>
+              </span>
             </button>
             <div className="flex items-center justify-between gap-4 sm:justify-end">
               <p className="flex items-center gap-1.5 text-xs text-[#838a81]"><CalendarClock className="size-3.5" />{publication.status === 'published' ? scheduledLabel(publication.published_at, timezone) : scheduledLabel(publication.scheduled_for, timezone)}</p>
@@ -206,7 +256,7 @@ export function DashboardPublications({ publications, hasError, timezone, catego
         )}
       </div>
 
-      {dialogOpen && <PublicationDialog key={editing?.id ?? 'new'} publication={editing} onClose={closeDialog} timezone={timezone} categories={categories} />}
+      {dialogOpen && <PublicationDialog key={editing?.id ?? 'new'} publication={editing} onClose={closeDialog} timezone={timezone} categories={categories} tags={tags} assets={assets} />}
     </section>
   )
 }

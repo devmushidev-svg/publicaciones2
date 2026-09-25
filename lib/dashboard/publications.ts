@@ -10,6 +10,8 @@ export type PublicationRecord = {
   scheduled_for: string | null
   published_at: string | null
   platforms: string[]
+  mediaAssetIds: string[]
+  tagIds: string[]
   created_at: string
 }
 

@@ -90,9 +90,9 @@ export function DashboardShell({ userName, overview, publications, publicationsE
       <main className="lg:ml-[248px]">
         <DashboardHeader onOpenMenu={() => setSidebarOpen(true)} onSearch={() => setSearchOpen(true)} menuOpen={sidebarOpen} userName={userName} />
         {active === 'Biblioteca'
-          ? <DashboardLibrary key={`library-${activeSearch}`} assets={assets} publications={publications} mediaError={mediaError} storageError={storageError} initialSearch={activeSearch} />
+          ? <DashboardLibrary key={`library-${activeSearch}`} assets={assets} publications={publications} categories={categories} tags={tags} timezone={settings.timezone} publicationsError={publicationsError} mediaError={mediaError} storageError={storageError} initialSearch={activeSearch} />
           : active === 'Calendario'
-          ? <DashboardCalendar publications={publications} categories={categories} weekStartsOn={settings.weekStartsOn} timezone={settings.timezone} />
+          ? <DashboardCalendar publications={publications} categories={categories} tags={tags} assets={assets} weekStartsOn={settings.weekStartsOn} timezone={settings.timezone} />
             : active === 'Ideas'
               ? <DashboardIdeas key={`ideas-${activeSearch}`} ideas={ideas} hasError={ideasError} initialSearch={activeSearch} />
               : active === 'Rendimiento'
@@ -102,10 +102,10 @@ export function DashboardShell({ userName, overview, publications, publicationsE
                   : active === 'Configuración'
                     ? <><DashboardSettings {...settings} /><DashboardTaxonomy categories={categories} tags={tags} hasError={taxonomyError} /></>
                     : active === 'Publicaciones'
-                      ? <DashboardPublications key={`publications-${activeSearch}`} publications={publications} hasError={publicationsError} timezone={settings.timezone} categories={categories} initialSearch={activeSearch} />
+                      ? <DashboardPublications key={`publications-${activeSearch}`} publications={publications} hasError={publicationsError} timezone={settings.timezone} categories={categories} tags={tags} assets={assets} initialSearch={activeSearch} />
                       : <DashboardOverview userName={userName} overview={overview} onNavigate={(section) => navigateToSection(section)} onCreatePublication={() => setHomePublicationOpen(true)} />}
       </main>
-      {homePublicationOpen && <PublicationDialog publication={null} onClose={() => setHomePublicationOpen(false)} timezone={settings.timezone} categories={categories} />}
+      {homePublicationOpen && <PublicationDialog publication={null} onClose={() => setHomePublicationOpen(false)} timezone={settings.timezone} categories={categories} tags={tags} assets={assets} />}
       <DashboardSearch open={searchOpen} onClose={() => setSearchOpen(false)} onNavigate={navigateToSection} publications={publications} ideas={ideas} assets={assets} />
     </div>
   )

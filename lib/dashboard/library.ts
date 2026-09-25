@@ -7,6 +7,7 @@ export type MediaAssetRecord = {
   width: number | null
   height: number | null
   alt_text: string | null
+  content_sha256: string | null
   created_at: string
   signed_url: string | null
   publicationIds: string[]

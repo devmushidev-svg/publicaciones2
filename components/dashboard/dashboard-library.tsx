@@ -8,15 +8,41 @@ import { linkMediaToPublication, unlinkMediaFromPublication } from '@/app/action
 import { createClient } from '@/lib/supabase/client'
 import type { MediaAssetRecord } from '@/lib/dashboard/library'
 import type { PublicationRecord, PublicationActionState } from '@/lib/dashboard/publications'
+import type { CategoryOption, TagOption } from '@/components/dashboard/dashboard-taxonomy'
+import { LibraryPublications } from '@/components/dashboard/dashboard-library-publications'
+import { inspectMediaFile } from '@/lib/media-upload'
 
 const bucket = 'publication-media'
-const maxFileSize = 25 * 1024 * 1024
-const supportedTypes: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'video/mp4': 'mp4',
+
+async function recoverOrphanUploads() {
+  const supabase = createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) return
+
+  const knownPaths = new Set<string>()
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase.from('media_assets').select('storage_path').eq('user_id', user.id).order('created_at').range(offset, offset + 999)
+    if (error || !data) return
+    for (const item of data) knownPaths.add(item.storage_path)
+    if (data.length < 1000) break
+  }
+
+  const stalePaths: string[] = []
+  for (let offset = 0; ; offset += 100) {
+    const { data, error } = await supabase.storage.from(bucket).list(user.id, { limit: 100, offset })
+    if (error || !data) return
+    for (const item of data) {
+      if (!/^[0-9a-f-]{36}\.(jpg|png|webp|gif|mp4)$/i.test(item.name)) continue
+      const path = `${user.id}/${item.name}`
+      const createdAt = item.created_at ? Date.parse(item.created_at) : NaN
+      if (!knownPaths.has(path) && Number.isFinite(createdAt) && Date.now() - createdAt > 60 * 60 * 1000) stalePaths.push(path)
+    }
+    if (data.length < 100) break
+  }
+
+  for (let index = 0; index < stalePaths.length; index += 100) {
+    await supabase.storage.from(bucket).remove(stalePaths.slice(index, index + 100))
+  }
 }
 
 function bytesLabel(bytes: number) {
@@ -98,18 +124,25 @@ function PublicationLink({ asset, publications }: { asset: MediaAssetRecord; pub
 type DashboardLibraryProps = {
   assets: MediaAssetRecord[]
   publications: PublicationRecord[]
+  categories: CategoryOption[]
+  tags: TagOption[]
+  timezone: string
+  publicationsError: boolean
   mediaError: boolean
   storageError: boolean
   initialSearch?: string
 }
 
-export function DashboardLibrary({ assets: initialAssets, publications, mediaError, storageError, initialSearch = '' }: DashboardLibraryProps) {
+export function DashboardLibrary({ assets: initialAssets, publications, categories, tags, timezone, publicationsError, mediaError, storageError, initialSearch = '' }: DashboardLibraryProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
+  const [mode, setMode] = useState<'publications' | 'files'>(() => initialSearch && !publications.some((item) => item.title.toLocaleLowerCase('es').includes(initialSearch.toLocaleLowerCase('es'))) && initialAssets.some((item) => item.file_name.toLocaleLowerCase('es').includes(initialSearch.toLocaleLowerCase('es'))) ? 'files' : 'publications')
   const [query, setQuery] = useState(initialSearch)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  useEffect(() => { void recoverOrphanUploads().catch(() => undefined) }, [])
 
   const filteredAssets = initialAssets.filter((asset) => `${asset.file_name} ${asset.alt_text ?? ''}`.toLocaleLowerCase('es').includes(query.trim().toLocaleLowerCase('es')))
 
@@ -118,6 +151,9 @@ export function DashboardLibrary({ assets: initialAssets, publications, mediaErr
     setError('')
     setNotice('')
     setUploading(true)
+    let uploaded = 0
+    let duplicates = 0
+    const failures: string[] = []
 
     try {
       const supabase = createClient()
@@ -125,44 +161,55 @@ export function DashboardLibrary({ assets: initialAssets, publications, mediaErr
       if (userError || !user) throw new Error('Inicia sesión nuevamente para subir archivos.')
 
       for (const file of files) {
-        const extension = supportedTypes[file.type]
-        if (!extension) throw new Error(`${file.name}: formato no compatible.`)
-        if (file.size <= 0 || file.size > maxFileSize) throw new Error(`${file.name}: el límite es 25 MB.`)
+        try {
+          const { mimeType, extension, hash } = await inspectMediaFile(file)
+          const size = await dimensions(file)
+          if (mimeType.startsWith('image/') && (!size?.width || !size?.height)) throw new Error(`${file.name}: la imagen está dañada o no se puede abrir.`)
 
-        const path = `${user.id}/${crypto.randomUUID()}.${extension}`
-        const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
-          cacheControl: '3600',
-          contentType: file.type,
-          upsert: false,
-        })
-        if (uploadError) throw new Error(`No se pudo subir ${file.name}. Revisa la configuración de Storage.`)
+          const { data: existing, error: lookupError } = await supabase.from('media_assets').select('id').eq('user_id', user.id).eq('content_sha256', hash).maybeSingle()
+          if (lookupError) throw new Error(`${file.name}: no se pudo comprobar si ya existe.`)
+          if (existing) { duplicates += 1; continue }
 
-        const size = await dimensions(file)
-        const cleanName = Array.from(file.name, (character) => {
-          const code = character.charCodeAt(0)
-          return character === '/' || character === '\\' || code < 32 || code === 127 ? '_' : character
-        }).join('').slice(0, 255)
-        const { error: metadataError } = await supabase.from('media_assets').insert({
-          user_id: user.id,
-          storage_path: path,
-          file_name: cleanName,
-          mime_type: file.type,
-          byte_size: file.size,
-          width: size?.width ?? null,
-          height: size?.height ?? null,
-        })
+          const path = `${user.id}/${crypto.randomUUID()}.${extension}`
+          const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
+            cacheControl: '3600',
+            contentType: mimeType,
+            upsert: false,
+          })
+          if (uploadError) throw new Error(`${file.name}: no se pudo subir el archivo.`)
 
-        if (metadataError) {
-          await supabase.storage.from(bucket).remove([path])
-          throw new Error(`El archivo ${file.name} se subió, pero no se pudo guardar su ficha.`)
+          const cleanName = Array.from(file.name, (character) => {
+            const code = character.charCodeAt(0)
+            return character === '/' || character === '\\' || code < 32 || code === 127 ? '_' : character
+          }).join('').slice(0, 255) || 'Archivo'
+          const { error: metadataError } = await supabase.from('media_assets').insert({
+            user_id: user.id,
+            storage_path: path,
+            file_name: cleanName,
+            mime_type: mimeType,
+            byte_size: file.size,
+            width: size?.width ?? null,
+            height: size?.height ?? null,
+            content_sha256: hash,
+          })
+
+          if (metadataError) {
+            const { error: cleanupError } = await supabase.storage.from(bucket).remove([path])
+            if (metadataError.code === '23505' && !cleanupError) { duplicates += 1; continue }
+            throw new Error(cleanupError ? `${file.name}: no se pudo limpiar una subida incompleta.` : `${file.name}: no se pudo guardar la ficha del archivo.`)
+          }
+          uploaded += 1
+        } catch (cause) {
+          failures.push(cause instanceof Error ? cause.message : `${file.name}: no se pudo subir.`)
         }
       }
 
-      setNotice(files.length === 1 ? 'Archivo agregado a la biblioteca.' : `${files.length} archivos agregados a la biblioteca.`)
-      router.refresh()
+      if (uploaded || duplicates) setNotice(`${uploaded} ${uploaded === 1 ? 'archivo agregado' : 'archivos agregados'}${duplicates ? ` · ${duplicates} ${duplicates === 1 ? 'duplicado omitido' : 'duplicados omitidos'}` : ''}.`)
+      if (failures.length) setError(failures.join(' '))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo completar la carga.')
     } finally {
+      if (uploaded) router.refresh()
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''
     }
@@ -171,16 +218,23 @@ export function DashboardLibrary({ assets: initialAssets, publications, mediaErr
   return (
     <section className="mx-auto max-w-[1400px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><p className="text-xs font-semibold uppercase text-[#74816f]">Espacio de trabajo</p><h1 className="mt-2 font-serif text-3xl sm:text-4xl">Biblioteca</h1><p className="mt-2 text-sm text-[#747b72]">Tus imágenes y videos para crear publicaciones.</p></div>
+        <div><p className="text-xs font-semibold uppercase text-[#74816f]">Espacio de trabajo</p><h1 className="mt-2 font-serif text-3xl sm:text-4xl">Biblioteca</h1><p className="mt-2 text-sm text-[#747b72]">Publicaciones y archivos para reutilizar tu contenido.</p></div>
         <div>
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4" multiple className="sr-only" onChange={(event) => uploadFiles(Array.from(event.target.files ?? []))} />
-          <button type="button" disabled={uploading || storageError} onClick={() => inputRef.current?.click()} className="flex h-10 w-fit items-center gap-2 rounded-md bg-[#222824] px-4 text-sm font-semibold text-white hover:bg-[#39413b] disabled:cursor-not-allowed disabled:opacity-55"><FilePlus2 className="size-4" />{uploading ? 'Subiendo…' : 'Agregar archivos'}</button>
+          <button type="button" disabled={uploading} onClick={() => { setMode('files'); inputRef.current?.click() }} className="flex h-10 w-fit items-center gap-2 rounded-md bg-[#222824] px-4 text-sm font-semibold text-white hover:bg-[#39413b] disabled:cursor-not-allowed disabled:opacity-55"><FilePlus2 className="size-4" />{uploading ? 'Subiendo…' : 'Agregar archivos'}</button>
         </div>
       </div>
 
       {(mediaError || storageError) && <p role="status" className="mb-4 rounded-md border border-[#e7c8a2] bg-[#fff8ea] px-4 py-3 text-sm text-[#765c2c]">{storageError ? 'El almacenamiento privado no está disponible. Verifica que la migración de Storage esté aplicada.' : 'No se pudieron cargar todos los archivos.'}</p>}
       {error && <p role="alert" className="mb-4 rounded-md border border-[#e7bdb0] bg-[#fff5f1] px-4 py-3 text-sm text-[#8c3e2f]">{error}</p>}
       {notice && <p role="status" className="mb-4 rounded-md border border-[#c8d8ca] bg-[#f0f6ef] px-4 py-3 text-sm text-[#45694c]">{notice}</p>}
+
+      <div className="mb-5 flex gap-1 border-b border-[#dedfd8]" role="group" aria-label="Vista de biblioteca">
+        <button type="button" aria-pressed={mode === 'publications'} onClick={() => setMode('publications')} className={`border-b-2 px-4 py-3 text-sm font-medium ${mode === 'publications' ? 'border-[#526e58] text-[#1f2422]' : 'border-transparent text-[#7b8279]'}`}>Publicaciones</button>
+        <button type="button" aria-pressed={mode === 'files'} onClick={() => setMode('files')} className={`border-b-2 px-4 py-3 text-sm font-medium ${mode === 'files' ? 'border-[#526e58] text-[#1f2422]' : 'border-transparent text-[#7b8279]'}`}>Archivos</button>
+      </div>
+
+      {mode === 'publications' ? <LibraryPublications publications={publications} assets={initialAssets} categories={categories} tags={tags} timezone={timezone} initialSearch={initialSearch} hasError={publicationsError} /> : <>
 
       <div className="mb-4 flex flex-col gap-3 border-b border-[#dedfd8] pb-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-[#737b72]">{initialAssets.length} {initialAssets.length === 1 ? 'archivo' : 'archivos'}</p>
@@ -209,6 +263,7 @@ export function DashboardLibrary({ assets: initialAssets, publications, mediaErr
         <h2 className="text-sm font-semibold">{initialAssets.length ? 'No hay resultados' : 'Tu biblioteca está vacía'}</h2>
         <p className="mt-1 max-w-sm text-sm text-[#838a81]">{initialAssets.length ? 'Prueba con otro nombre de archivo.' : 'Agrega imágenes o videos para usarlos en tus publicaciones.'}</p>
       </div>}
+      </>}
     </section>
   )
 }

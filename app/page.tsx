@@ -26,6 +26,7 @@ export default async function Page() {
     { data: tagRows, error: tagsError },
     { data: mediaRows, error: mediaError },
     { data: mediaLinks, error: mediaLinksError },
+    { data: tagLinks, error: tagLinksError },
     { data: ideas, error: ideasError },
     { data: metricRows, error: metricsError },
     { data: connectionRows, error: connectionsError },
@@ -38,16 +39,17 @@ export default async function Page() {
       .select('id,title,body,category_id,categories(name),status,scheduled_for,published_at,platforms,created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(100),
+      .limit(1000),
     supabase.from('categories').select('id,name,color,is_archived').eq('user_id', userId).order('name'),
     supabase.from('tags').select('id,name,is_archived').eq('user_id', userId).order('name'),
     supabase
       .from('media_assets')
-      .select('id,storage_path,file_name,mime_type,byte_size,width,height,alt_text,created_at')
+      .select('id,storage_path,file_name,mime_type,byte_size,width,height,alt_text,content_sha256,created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(200),
-    supabase.from('publication_media').select('media_asset_id,publication_id').eq('user_id', userId),
+      .limit(1000),
+    supabase.from('publication_media').select('media_asset_id,publication_id,sort_order').eq('user_id', userId).order('sort_order'),
+    supabase.from('publication_tags').select('publication_id,tag_id').eq('user_id', userId),
     supabase
       .from('ideas')
       .select('id,title,notes,status,source,created_at')
@@ -72,20 +74,32 @@ export default async function Page() {
   let storageError = false
   const signedUrls = new Map<string, string>()
   if (mediaRows?.length) {
-    const { data, error } = await supabase.storage
-      .from('publication-media')
-      .createSignedUrls(mediaRows.map((asset) => asset.storage_path), 300)
-    storageError = Boolean(error || data?.some((item) => item.error))
-    for (const item of data ?? []) {
-      if (item.path && item.signedUrl) signedUrls.set(item.path, item.signedUrl)
+    const paths = mediaRows.map((asset) => asset.storage_path)
+    const batches = Array.from({ length: Math.ceil(paths.length / 100) }, (_, index) => paths.slice(index * 100, (index + 1) * 100))
+    const results = await Promise.all(batches.map((batch) => supabase.storage.from('publication-media').createSignedUrls(batch, 3600)))
+    for (const { data, error } of results) {
+      storageError ||= Boolean(error || data?.some((item) => item.error))
+      for (const item of data ?? []) {
+        if (item.path && item.signedUrl) signedUrls.set(item.path, item.signedUrl)
+      }
     }
   }
 
   const publicationsByMedia = new Map<string, string[]>()
+  const mediaByPublication = new Map<string, string[]>()
   for (const link of mediaLinks ?? []) {
     const ids = publicationsByMedia.get(link.media_asset_id) ?? []
     ids.push(link.publication_id)
     publicationsByMedia.set(link.media_asset_id, ids)
+    const assetIds = mediaByPublication.get(link.publication_id) ?? []
+    assetIds.push(link.media_asset_id)
+    mediaByPublication.set(link.publication_id, assetIds)
+  }
+  const tagsByPublication = new Map<string, string[]>()
+  for (const link of tagLinks ?? []) {
+    const ids = tagsByPublication.get(link.publication_id) ?? []
+    ids.push(link.tag_id)
+    tagsByPublication.set(link.publication_id, ids)
   }
   const assets = (mediaRows ?? []).map((asset) => ({
     ...asset,
@@ -98,7 +112,12 @@ export default async function Page() {
   const publicationRecords = publicationRows.map((publication) => {
     const joinedCategory = publication.categories
     const categoryName = Array.isArray(joinedCategory) ? joinedCategory[0]?.name : joinedCategory?.name
-    return { ...publication, category: categoryName ?? null }
+    return {
+      ...publication,
+      category: categoryName ?? null,
+      mediaAssetIds: mediaByPublication.get(publication.id) ?? [],
+      tagIds: tagsByPublication.get(publication.id) ?? [],
+    }
   })
 
   const metadataName = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : ''
@@ -108,7 +127,7 @@ export default async function Page() {
     userName={userName}
     overview={overview}
     publications={publicationRecords}
-    publicationsError={Boolean(publicationsError)}
+    publicationsError={Boolean(publicationsError || mediaLinksError || tagLinksError)}
     categories={categoryOptions}
     tags={tagOptions}
     taxonomyError={Boolean(categoriesError || tagsError)}

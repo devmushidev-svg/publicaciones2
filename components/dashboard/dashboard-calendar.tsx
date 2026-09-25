@@ -6,6 +6,8 @@ import { PublicationDialog } from '@/components/dashboard/dashboard-publications
 import type { PublicationRecord } from '@/lib/dashboard/publications'
 import { dateKeyInTimezone, yearMonthInTimezone } from '@/lib/date-time'
 import type { CategoryOption } from '@/components/dashboard/dashboard-taxonomy'
+import type { TagOption } from '@/components/dashboard/dashboard-taxonomy'
+import type { MediaAssetRecord } from '@/lib/dashboard/library'
 
 const weekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const monthFormatter = new Intl.DateTimeFormat('es', { month: 'long', year: 'numeric' })
@@ -27,7 +29,7 @@ function dateLabel(date: Date) {
   return new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'long' }).format(date)
 }
 
-export function DashboardCalendar({ publications, categories, weekStartsOn = 1, timezone = 'America/Tegucigalpa' }: { publications: PublicationRecord[]; categories: CategoryOption[]; weekStartsOn?: number; timezone?: string }) {
+export function DashboardCalendar({ publications, categories, tags, assets, weekStartsOn = 1, timezone = 'America/Tegucigalpa' }: { publications: PublicationRecord[]; categories: CategoryOption[]; tags: TagOption[]; assets: MediaAssetRecord[]; weekStartsOn?: number; timezone?: string }) {
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const { year, month } = yearMonthInTimezone(new Date(), timezone)
     return new Date(year, month - 1, 1)
@@ -130,7 +132,7 @@ export function DashboardCalendar({ publications, categories, weekStartsOn = 1, 
         </aside>
       </div>
 
-      {(newDate !== null || editing) && <PublicationDialog key={editing?.id ?? newDate ?? 'new'} publication={editing} initialDate={newDate ?? ''} onClose={closeDialog} timezone={timezone} categories={categories} />}
+      {(newDate !== null || editing) && <PublicationDialog key={editing?.id ?? newDate ?? 'new'} publication={editing} initialDate={newDate ?? ''} onClose={closeDialog} timezone={timezone} categories={categories} tags={tags} assets={assets} />}
     </section>
   )
 }

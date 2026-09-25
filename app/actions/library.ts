@@ -28,8 +28,18 @@ export async function linkMediaToPublication(
     return { error: 'No se pudo validar el medio o la publicación.' }
   }
 
+  const { data: lastLink, error: orderError } = await supabase
+    .from('publication_media')
+    .select('sort_order')
+    .eq('publication_id', publicationId)
+    .eq('user_id', user.id)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (orderError) return { error: 'No se pudo ordenar el archivo.' }
+
   const { error } = await supabase.from('publication_media').upsert(
-    { publication_id: publicationId, media_asset_id: mediaAssetId, user_id: user.id },
+    { publication_id: publicationId, media_asset_id: mediaAssetId, user_id: user.id, sort_order: (lastLink?.sort_order ?? -1) + 1 },
     { onConflict: 'publication_id,media_asset_id', ignoreDuplicates: true },
   )
   if (error) return { error: 'No se pudo vincular el medio.' }
