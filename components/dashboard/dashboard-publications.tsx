@@ -43,7 +43,7 @@ type DialogProps = {
   onClose: () => void
 }
 
-function PublicationDialog({ publication, onClose }: DialogProps) {
+export function PublicationDialog({ publication, onClose, initialDate = '' }: DialogProps & { initialDate?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [state, formAction, pending] = useActionState<PublicationActionState, FormData>(savePublication, {})
 
@@ -92,7 +92,7 @@ function PublicationDialog({ publication, onClose }: DialogProps) {
             <input name="category" maxLength={80} defaultValue={publication?.category ?? ''} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
           </label>
           <label className="text-sm font-medium sm:col-span-2">Programar para
-            <input name="scheduled_for" type="datetime-local" defaultValue={localDateTime(publication?.scheduled_for ?? null)} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
+            <input name="scheduled_for" type="datetime-local" defaultValue={publication ? localDateTime(publication.scheduled_for) : initialDate} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
           </label>
           <fieldset className="sm:col-span-2">
             <legend className="text-sm font-medium">Plataformas</legend>

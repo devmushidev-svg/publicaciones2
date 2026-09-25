@@ -9,6 +9,7 @@ import type { PublicationRecord } from '@/lib/dashboard/publications'
 import { DashboardPublications } from '@/components/dashboard/dashboard-publications'
 import { DashboardLibrary } from '@/components/dashboard/dashboard-library'
 import type { MediaAssetRecord } from '@/lib/dashboard/library'
+import { DashboardCalendar } from '@/components/dashboard/dashboard-calendar'
 
 type DashboardShellProps = {
   userName: string
@@ -55,9 +56,11 @@ export function DashboardShell({ userName, overview, publications, publicationsE
         <DashboardHeader onOpenMenu={() => setSidebarOpen(true)} menuOpen={sidebarOpen} userName={userName} />
         {active === 'Biblioteca'
           ? <DashboardLibrary assets={assets} publications={publications} mediaError={mediaError} storageError={storageError} />
-          : active === 'Publicaciones'
-            ? <DashboardPublications publications={publications} hasError={publicationsError} />
-            : <DashboardOverview userName={userName} overview={overview} />}
+          : active === 'Calendario'
+            ? <DashboardCalendar publications={publications} />
+            : active === 'Publicaciones'
+              ? <DashboardPublications publications={publications} hasError={publicationsError} />
+              : <DashboardOverview userName={userName} overview={overview} />}
       </main>
     </div>
   )
