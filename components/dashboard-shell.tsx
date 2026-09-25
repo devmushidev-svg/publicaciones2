@@ -4,8 +4,14 @@ import { useEffect, useRef, useState } from 'react'
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { DashboardOverview } from '@/components/dashboard/dashboard-overview'
 import { DashboardSidebar } from '@/components/dashboard/dashboard-sidebar'
+import type { OverviewData } from '@/lib/dashboard/overview'
 
-export function DashboardShell() {
+type DashboardShellProps = {
+  userName: string
+  overview: OverviewData
+}
+
+export function DashboardShell({ userName, overview }: DashboardShellProps) {
   const [active, setActive] = useState('Inicio')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const mobileSidebarRef = useRef<HTMLDialogElement>(null)
@@ -37,8 +43,8 @@ export function DashboardShell() {
       </dialog>
 
       <main className="lg:ml-[248px]">
-        <DashboardHeader onOpenMenu={() => setSidebarOpen(true)} menuOpen={sidebarOpen} />
-        <DashboardOverview />
+        <DashboardHeader onOpenMenu={() => setSidebarOpen(true)} menuOpen={sidebarOpen} userName={userName} />
+        <DashboardOverview userName={userName} overview={overview} />
       </main>
     </div>
   )
