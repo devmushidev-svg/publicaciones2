@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { PublicationActionState, PublicationStatus } from '@/lib/dashboard/publications'
 import { publicationPlatforms } from '@/lib/dashboard/publications'
-import { dateTimeInputToIso } from '@/lib/date-time'
 
-const statuses = new Set<PublicationStatus>(['draft', 'scheduled', 'published', 'archived'])
+// Scheduling lives in scheduled_posts; the editor only handles content states.
+const statuses = new Set<PublicationStatus>(['draft', 'published', 'archived'])
 const platformValues = new Set<string>(publicationPlatforms.map(({ value }) => value))
 
 function value(formData: FormData, name: string) {
@@ -26,8 +26,6 @@ export async function savePublication(
   const body = String(formData.get('body') ?? '').trim()
   const categoryId = value(formData, 'category_id')
   const status = value(formData, 'status') as PublicationStatus
-  const scheduledValue = value(formData, 'scheduled_for')
-  const timezone = value(formData, 'timezone') || 'America/Tegucigalpa'
   const platforms = formData.getAll('platforms').map(String).filter((platform) => platformValues.has(platform))
   const mediaIds = [...new Set(formData.getAll('media_asset_ids').map(String).filter(Boolean))]
   const tagIds = [...new Set(formData.getAll('tag_ids').map(String).filter(Boolean))]
@@ -40,14 +38,10 @@ export async function savePublication(
     if (error || !current) return { error: 'No encontramos esa publicación.' }
     if (current.status !== 'published') return { error: 'Usa “Marcar publicada” para guardar también el historial.' }
   }
-  if (status === 'scheduled' && !scheduledValue) return { error: 'Indica cuándo se publicará.' }
   if (mediaIds.length > 20 || tagIds.length > 30) return { error: 'Selecciona hasta 20 archivos y 30 etiquetas.' }
   if ([...mediaIds, ...tagIds].some((item) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item))) {
     return { error: 'La selección de archivos o etiquetas no es válida.' }
   }
-
-  const scheduledFor = scheduledValue ? dateTimeInputToIso(scheduledValue, timezone) : null
-  if (scheduledValue && !scheduledFor) return { error: 'La fecha u hora no existe en la zona horaria seleccionada.' }
 
   if (categoryId) {
     const { data: category, error } = await supabase.from('categories').select('id,name,is_archived').eq('id', categoryId).eq('user_id', user.id).maybeSingle()
@@ -59,13 +53,13 @@ export async function savePublication(
     }
   }
 
-  const { error } = await supabase.rpc('save_my_publication', {
+  const { data: savedId, error } = await supabase.rpc('save_my_publication', {
     p_id: id || null,
     p_title: title,
     p_body: body,
     p_category_id: categoryId || null,
     p_status: status,
-    p_scheduled_for: status === 'scheduled' ? scheduledFor : null,
+    p_scheduled_for: null,
     p_published_at: status === 'published' ? (value(formData, 'published_at') || new Date().toISOString()) : null,
     p_platforms: platforms,
     p_media_ids: mediaIds,
@@ -78,7 +72,7 @@ export async function savePublication(
   }
 
   revalidatePath('/')
-  return { success: 'Publicación guardada.' }
+  return { success: 'Publicación guardada.', publicationId: typeof savedId === 'string' ? savedId : undefined }
 }
 
 export async function archivePublication(

@@ -30,7 +30,7 @@ select lives_ok(
   'users can update their own category preferences'
 );
 select lives_ok(
-  $$select public.save_my_recommendation_settings(4, 21, 30, '[{"category_id":"95000000-0000-4000-8000-000000000001","target_share":0.25,"priority":5,"is_enabled":true}]'::jsonb)$$,
+  $$select public.save_my_recommendation_settings(4::smallint, 21::smallint, 30::smallint, '[{"category_id":"95000000-0000-4000-8000-000000000001","target_share":0.25,"priority":5,"is_enabled":true}]'::jsonb)$$,
   'the recommendation settings are saved through the owner-scoped function'
 );
 select is((select posts_per_day::integer from public.recommendation_settings where user_id = '94000000-0000-4000-8000-000000000001'), 4, 'the settings update is committed for the authenticated owner');

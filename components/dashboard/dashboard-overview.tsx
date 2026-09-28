@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   BookOpen,
+  CalendarPlus,
   FilePlus2,
   Hash,
   Image as ImageIcon,
@@ -16,6 +17,8 @@ type DashboardOverviewProps = {
   overview: OverviewData
   onNavigate: (section: string) => void
   onCreatePublication: () => void
+  onSchedule: (publicationId?: string) => void
+  opportunityCount: number
 }
 
 const numberFormat = new Intl.NumberFormat('es', { notation: 'compact', maximumFractionDigits: 1 })
@@ -25,7 +28,7 @@ function timeLabel(value: string | null, timeZone: string) {
   return new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit', timeZone }).format(new Date(value))
 }
 
-export function DashboardOverview({ userName, overview, onNavigate, onCreatePublication }: DashboardOverviewProps) {
+export function DashboardOverview({ userName, overview, onNavigate, onCreatePublication, onSchedule, opportunityCount }: DashboardOverviewProps) {
   const bars = overview.chart.map((value) => overview.chart.length ? (value / Math.max(...overview.chart, 1)) * 100 : 0)
   const greetingName = userName.split(/\s+/)[0]
   const hasReachData = overview.chart.some((value) => value > 0)
@@ -49,8 +52,11 @@ export function DashboardOverview({ userName, overview, onNavigate, onCreatePubl
           {overview.recommendations.length ? <>
             <h2 className="max-w-lg font-serif text-3xl leading-tight sm:text-4xl">{overview.recommendations[0].title}</h2>
             <p className="mt-3 max-w-md text-sm leading-6 text-[#b4bdb4]">{overview.recommendations[0].reason}</p>
-            {overview.recommendations.length > 1 && <div className="mt-5 space-y-3 border-t border-white/15 pt-4">{overview.recommendations.slice(1).map((item, index) => <div key={item.id} className="flex items-start gap-3"><span className="mt-0.5 text-xs text-[#f5c86a]">0{index + 2}</span><div><p className="text-sm font-medium">{item.title}</p><p className="mt-1 text-xs text-[#b4bdb4]">{item.reason}</p></div></div>)}</div>}
-            <button onClick={() => onNavigate('Publicaciones')} className="mt-6 rounded-full bg-[#f5c86a] px-4 py-2.5 text-sm font-semibold text-[#222824] hover:bg-[#f8d889]">Abrir publicaciones</button>
+            {overview.recommendations.length > 1 && <div className="mt-5 space-y-3 border-t border-white/15 pt-4">{overview.recommendations.slice(1).map((item, index) => <div key={item.id} className="flex items-start gap-3"><span className="mt-0.5 text-xs text-[#f5c86a]">0{index + 2}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{item.title}</p><p className="mt-1 text-xs text-[#b4bdb4]">{item.reason}</p></div><button onClick={() => onSchedule(item.id)} aria-label={`Programar ${item.title}`} title="Programar" className="shrink-0 rounded-full border border-white/20 p-1.5 text-[#f5c86a] hover:bg-white/10"><CalendarPlus className="size-3.5" /></button></div>)}</div>}
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button onClick={() => onSchedule(overview.recommendations[0].id)} className="flex items-center gap-2 rounded-full bg-[#f5c86a] px-4 py-2.5 text-sm font-semibold text-[#222824] hover:bg-[#f8d889]"><CalendarPlus className="size-4" />Programar</button>
+              <button onClick={() => onNavigate('Publicaciones')} className="rounded-full border border-white/20 px-4 py-2.5 text-sm font-medium text-white hover:bg-white/10">Abrir publicaciones</button>
+            </div>
           </> : <>
             <h2 className="max-w-lg font-serif text-3xl leading-tight sm:text-4xl">No hay contenido listo para recomendar.</h2>
             <p className="mt-4 max-w-md text-sm leading-6 text-[#b4bdb4]">Crea un borrador o ajusta el descanso entre reutilizaciones en Configuración.</p>
@@ -68,19 +74,21 @@ export function DashboardOverview({ userName, overview, onNavigate, onCreatePubl
 
       <section className="mt-8 grid gap-8 xl:grid-cols-[1.35fr_0.65fr]">
         <div>
-          <div className="mb-4 flex items-center justify-between"><div><h2 className="font-serif text-2xl">Publicaciones de hoy</h2><p className="mt-1 text-sm text-[#858c84]">Tu calendario para mantener el ritmo.</p></div><button onClick={() => onNavigate('Calendario')} className="text-sm font-medium text-[#65705f] hover:underline">Ver calendario</button></div>
+          <div className="mb-4 flex items-center justify-between"><div><h2 className="font-serif text-2xl">Publicaciones de hoy</h2><p className="mt-1 text-sm text-[#858c84]">Registradas hoy: {overview.usedToday} de {overview.postsPerDay} · según tu historial.</p></div><button onClick={() => onNavigate('Calendario')} className="text-sm font-medium text-[#65705f] hover:underline">Ver calendario</button></div>
           <div className="overflow-hidden rounded-2xl border border-[#dedfd8] bg-[#fbfbf8]">
             {overview.publications.length ? overview.publications.map((post, index) => (
               <div key={post.id} className={`flex items-center gap-4 px-4 py-4 sm:px-5 ${index !== overview.publications.length - 1 ? 'border-b border-[#e5e6e0]' : ''}`}>
                 <span className="w-12 shrink-0 text-xs font-medium text-[#959b93]">{timeLabel(post.scheduled_for, overview.timezone)}</span>
                 <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#e8ece5]"><ImageIcon className="size-5 text-[#7a8477]" /></div>
                 <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{post.title}</p><p className="mt-1 truncate text-xs text-[#929990]">{post.category || 'Sin categoría'}{post.platforms.length ? ` · ${post.platforms.join(' + ')}` : ''}</p></div>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${post.status === 'fulfilled' ? 'bg-[#e2eee5] text-[#4c7557]' : 'bg-[#e6edf4] text-[#48627b]'}`}>{post.status === 'fulfilled' ? 'Registrada' : 'Programada'}</span>
               </div>
-            )) : <p className="px-5 py-8 text-sm text-[#858c84]">No tienes publicaciones programadas para hoy.</p>}
+            )) : <div className="px-5 py-8 text-sm text-[#858c84]"><p>No tienes publicaciones programadas para hoy.</p><button onClick={() => onSchedule()} className="mt-3 flex items-center gap-2 text-sm font-medium text-[#65705f] hover:underline"><CalendarPlus className="size-4" />Programar una publicación</button></div>}
           </div>
         </div>
         <div>
           <div className="mb-4 flex items-center justify-between"><div><h2 className="font-serif text-2xl">Ideas nuevas</h2><p className="mt-1 text-sm text-[#858c84]">Tu lista para cuando necesites inspiración.</p></div><Lightbulb className="size-5 text-[#c18d32]" /></div>
+          {opportunityCount > 0 && <button onClick={() => onNavigate('Ideas')} className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-[#e7c8a2] bg-[#fff8ea] p-4 text-left text-sm text-[#765c2c] hover:border-[#d9b27f]"><Sparkles className="size-4 shrink-0" /><span className="flex-1">{opportunityCount} {opportunityCount === 1 ? 'oportunidad detectada' : 'oportunidades detectadas'} en tu historial</span><ArrowUpRight className="size-4" /></button>}
           <div className="flex flex-col gap-3">
             {overview.ideas.length ? overview.ideas.map((idea, index) => <button key={idea.id} onClick={() => onNavigate('Ideas')} className="group flex items-center gap-3 rounded-2xl border border-[#dedfd8] bg-[#fbfbf8] p-4 text-left hover:border-[#c5cfc1]"><span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#f1e6c9] text-xs font-semibold text-[#87682b]">{String(index + 1).padStart(2, '0')}</span><span className="flex-1 text-sm font-medium leading-5">{idea.title}</span><ArrowUpRight className="size-4 text-[#a2aaa1] transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></button>) : <p className="rounded-2xl border border-[#dedfd8] bg-[#fbfbf8] p-4 text-sm text-[#858c84]">Todavía no hay ideas guardadas.</p>}
           </div>

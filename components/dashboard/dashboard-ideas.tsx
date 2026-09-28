@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
-import { Archive, ArrowRight, FilePlus2, Lightbulb, Pencil, Search, X } from 'lucide-react'
-import { archiveIdea, convertIdeaToDraft, saveIdea, type IdeaActionState, type IdeaStatus } from '@/app/actions/ideas'
+import { Archive, ArrowRight, BookmarkPlus, CalendarPlus, Check, FilePlus2, Lightbulb, Pencil, Search, Sparkles, X } from 'lucide-react'
+import { archiveIdea, convertIdeaToDraft, saveIdea, saveOpportunityAsIdea, type IdeaActionState, type IdeaStatus } from '@/app/actions/ideas'
+import type { CampaignRecord } from '@/lib/dashboard/schedule'
+import type { PublicationRecord } from '@/lib/dashboard/publications'
+import type { Opportunity } from '@/lib/insights/opportunities'
 
 export type IdeaRecord = {
   id: string
@@ -12,6 +15,9 @@ export type IdeaRecord = {
   notes: string
   status: IdeaStatus
   source: string | null
+  campaign_id: string | null
+  publication_id: string | null
+  source_key: string | null
   created_at: string
 }
 
@@ -24,7 +30,7 @@ function RefreshOnSuccess({ success }: { success?: string }) {
   return null
 }
 
-function IdeaDialog({ idea, onClose }: { idea: IdeaRecord | null; onClose: () => void }) {
+function IdeaDialog({ idea, campaigns, onClose }: { idea: IdeaRecord | null; campaigns: CampaignRecord[]; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [state, formAction, pending] = useActionState<IdeaActionState, FormData>(saveIdea, {})
 
@@ -46,12 +52,44 @@ function IdeaDialog({ idea, onClose }: { idea: IdeaRecord | null; onClose: () =>
       <label className="mt-4 block text-sm font-medium">Notas
         <textarea name="notes" rows={5} defaultValue={idea?.notes ?? ''} className="mt-1.5 w-full resize-y rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 py-2.5 text-sm outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
       </label>
+      <label className="mt-4 block text-sm font-medium">Campaña <span className="font-normal text-[#838a81]">(opcional)</span>
+        <select name="campaign_id" defaultValue={idea?.campaign_id ?? ''} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f]"><option value="">Sin campaña</option>{campaigns.filter((campaign) => !campaign.is_archived || campaign.id === idea?.campaign_id).map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}</select>
+      </label>
       <label className="mt-4 block text-sm font-medium">Estado
         <select name="status" defaultValue={idea?.status ?? 'inbox'} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f]">{(['inbox', 'planned', 'archived'] as const).map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select>
       </label>
       <div className="mt-6 flex justify-end gap-3 border-t border-[#e1e2dc] pt-4"><button type="button" onClick={() => dialogRef.current?.close()} className="h-10 rounded-md px-4 text-sm font-medium text-[#60685f] hover:bg-[#e8ebe3]">Cancelar</button><button type="submit" disabled={pending} className="h-10 rounded-md bg-[#222824] px-4 text-sm font-semibold text-white hover:bg-[#39413b] disabled:opacity-60">{pending ? 'Guardando…' : 'Guardar idea'}</button></div>
     </form>
   </dialog>
+}
+
+const kindLabels: Record<Opportunity['kind'], string> = {
+  pending: 'Confirmar', coverage: 'Programación', cadence: 'Ritmo', 'category-gap': 'Equilibrio', overused: 'Repetición',
+  rested: 'Reutilizar', 'unused-draft': 'Borrador', 'unused-media': 'Biblioteca', campaign: 'Campaña',
+}
+
+function OpportunityCard({ opportunity, saved, onSchedule, onNavigate }: { opportunity: Opportunity; saved: boolean; onSchedule: (publicationId?: string, campaignId?: string) => void; onNavigate: (section: string) => void }) {
+  const [state, action, pending] = useActionState<IdeaActionState, FormData>(saveOpportunityAsIdea, {})
+  const done = saved || Boolean(state.success)
+  const target = opportunity.kind === 'pending' || opportunity.kind === 'coverage' ? 'Calendario' : opportunity.kind === 'unused-media' ? 'Biblioteca' : opportunity.kind === 'cadence' ? 'Rendimiento' : null
+  return <article className="flex flex-col border-b border-[#e3e4de] py-5">
+    <div className="flex items-start justify-between gap-3"><h3 className="text-sm font-semibold leading-5">{opportunity.title}</h3><span className="shrink-0 rounded-full bg-[#f1e6c9] px-2 py-1 text-[10px] text-[#87682b]">{kindLabels[opportunity.kind]}</span></div>
+    <p className="mt-2 text-sm leading-5 text-[#596258]">{opportunity.explanation}</p>
+    {!!opportunity.evidence.length && <ul className="mt-2 space-y-0.5 text-xs text-[#838a81]">{opportunity.evidence.map((item) => <li key={item}>· {item}</li>)}</ul>}
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      {(opportunity.publicationId || opportunity.kind === 'coverage' || opportunity.kind === 'campaign') && <button type="button" onClick={() => onSchedule(opportunity.publicationId, opportunity.campaignId)} className="flex h-8 items-center gap-1.5 rounded-md bg-[#222824] px-3 text-xs font-medium text-white hover:bg-[#39413b]"><CalendarPlus className="size-3.5" />Programar</button>}
+      {target && <button type="button" onClick={() => onNavigate(target)} className="flex h-8 items-center gap-1.5 rounded-md border border-[#cdd1c8] px-3 text-xs font-medium text-[#465347] hover:bg-[#e8ebe3]">Ir a {target}</button>}
+      <form action={action}>
+        <input type="hidden" name="source_key" value={opportunity.key} />
+        <input type="hidden" name="title" value={opportunity.title} />
+        <input type="hidden" name="notes" value={[opportunity.explanation, ...opportunity.evidence.map((item) => `· ${item}`)].join('\n')} />
+        <input type="hidden" name="campaign_id" value={opportunity.campaignId ?? ''} />
+        <button type="submit" disabled={pending || done} className="flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[#65705f] hover:bg-[#e8ebe3] disabled:opacity-60">{done ? <Check className="size-3.5" /> : <BookmarkPlus className="size-3.5" />}{done ? 'Guardada en ideas' : pending ? 'Guardando…' : 'Guardar como idea'}</button>
+      </form>
+    </div>
+    {state.error && <p role="alert" className="mt-2 text-xs text-[#8c3e2f]">{state.error}</p>}
+    <RefreshOnSuccess success={state.success} />
+  </article>
 }
 
 function IdeaActions({ idea, onEdit }: { idea: IdeaRecord; onEdit: () => void }) {
@@ -69,7 +107,21 @@ function IdeaActions({ idea, onEdit }: { idea: IdeaRecord; onEdit: () => void })
   </div>
 }
 
-export function DashboardIdeas({ ideas, hasError, initialSearch = '' }: { ideas: IdeaRecord[]; hasError: boolean; initialSearch?: string }) {
+type DashboardIdeasProps = {
+  ideas: IdeaRecord[]
+  hasError: boolean
+  initialSearch?: string
+  opportunities: Opportunity[]
+  campaigns: CampaignRecord[]
+  publications: PublicationRecord[]
+  onSchedule: (publicationId?: string, campaignId?: string) => void
+  onNavigate: (section: string, query?: string) => void
+}
+
+export function DashboardIdeas({ ideas, hasError, initialSearch = '', opportunities, campaigns, publications, onSchedule, onNavigate }: DashboardIdeasProps) {
+  const savedKeys = useMemo(() => new Set(ideas.flatMap((idea) => idea.source_key ?? [])), [ideas])
+  const campaignById = useMemo(() => new Map(campaigns.map((campaign) => [campaign.id, campaign])), [campaigns])
+  const publicationById = useMemo(() => new Map(publications.map((publication) => [publication.id, publication])), [publications])
   const [filter, setFilter] = useState<'active' | IdeaStatus>('active')
   const [search, setSearch] = useState(initialSearch)
   const [editing, setEditing] = useState<IdeaRecord | null>(null)
@@ -84,8 +136,14 @@ export function DashboardIdeas({ ideas, hasError, initialSearch = '' }: { ideas:
   return <section className="mx-auto max-w-[1400px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
     <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-semibold uppercase text-[#74816f]">Espacio de trabajo</p><h1 className="mt-2 font-serif text-3xl sm:text-4xl">Ideas</h1><p className="mt-2 text-sm text-[#747b72]">Captura inspiración y conviértela en publicaciones.</p></div><button onClick={() => { setEditing(null); setDialogOpen(true) }} className="flex h-10 w-fit items-center gap-2 rounded-md bg-[#222824] px-4 text-sm font-semibold text-white hover:bg-[#39413b]"><FilePlus2 className="size-4" />Nueva idea</button></div>
     {hasError && <p role="status" className="mb-5 rounded-md border border-[#e7c8a2] bg-[#fff8ea] px-4 py-3 text-sm text-[#765c2c]">No se pudieron cargar todas las ideas.</p>}
+    <section aria-labelledby="opportunities-heading" className="mb-10">
+      <div className="flex items-center gap-2 border-b border-[#dedfd8] pb-3"><Sparkles className="size-4 text-[#c18d32]" /><h2 id="opportunities-heading" className="font-serif text-2xl">Oportunidades</h2><span className="text-xs text-[#929990]">{opportunities.length}</span></div>
+      <p className="mt-2 text-xs text-[#838a81]">Calculadas con tu historial de usos, tu calendario y tus reglas de recomendación. No usan métricas de redes sociales.</p>
+      {opportunities.length ? <div className="grid gap-x-6 sm:grid-cols-2 xl:grid-cols-3">{opportunities.map((opportunity) => <OpportunityCard key={opportunity.key} opportunity={opportunity} saved={savedKeys.has(opportunity.key)} onSchedule={onSchedule} onNavigate={onNavigate} />)}</div>
+        : <p className="py-8 text-sm text-[#858c84]">No hay oportunidades por ahora. Aparecerán cuando el historial muestre huecos, repeticiones o contenido listo para reutilizar.</p>}
+    </section>
     <div className="flex flex-col gap-4 border-b border-[#dedfd8] pb-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex flex-wrap gap-1" role="group" aria-label="Filtrar ideas">{filters.map((value) => <button key={value} aria-pressed={filter === value} onClick={() => setFilter(value)} className={`rounded-md px-3 py-2 text-xs font-medium ${filter === value ? 'bg-[#222824] text-white' : 'text-[#697168] hover:bg-[#e8ebe3]'}`}>{value === 'active' ? 'Activas' : statusLabels[value]} <span className={filter === value ? 'text-white/70' : 'text-[#929990]'}>{counts[value]}</span></button>)}</div><label className="relative block w-full lg:max-w-xs"><span className="sr-only">Buscar ideas</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#90978e]" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar ideas" className="h-10 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] pl-9 pr-3 text-sm outline-none focus:border-[#71866f]" /></label></div>
-    {visible.length ? <div className="grid gap-x-6 sm:grid-cols-2 xl:grid-cols-3">{visible.map((idea) => <article key={idea.id} className="border-b border-[#e3e4de] py-5"><div className="flex items-start gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#f1e6c9] text-[#87682b]"><Lightbulb className="size-4" /></div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><h2 className="text-sm font-semibold leading-5">{idea.title}</h2><span className="shrink-0 rounded-full bg-[#edf0eb] px-2 py-1 text-[10px] text-[#596258]">{statusLabels[idea.status]}</span></div>{idea.notes && <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-[#747b72]">{idea.notes}</p>}<p className="mt-2 text-[11px] text-[#929990]">{new Intl.DateTimeFormat('es', { dateStyle: 'medium' }).format(new Date(idea.created_at))}{idea.source ? ` · ${idea.source}` : ''}</p><IdeaActions idea={idea} onEdit={() => { setEditing(idea); setDialogOpen(true) }} /></div></div></article>)}</div> : <div className="flex flex-col items-center py-16 text-center"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#e8ebe3] text-[#667361]"><Lightbulb className="size-5" /></div><h2 className="text-sm font-semibold">{ideas.length ? 'No hay resultados' : 'Todavía no hay ideas'}</h2><p className="mt-1 max-w-sm text-sm text-[#838a81]">{ideas.length ? 'Prueba con otra búsqueda o estado.' : 'Guarda una idea para tenerla a mano cuando planifiques contenido.'}</p>{!ideas.length && <button onClick={() => { setEditing(null); setDialogOpen(true) }} className="mt-4 flex items-center gap-2 rounded-md border border-[#cdd1c8] px-3 py-2 text-sm font-medium hover:bg-[#e8ebe3]"><FilePlus2 className="size-4" />Añadir idea</button>}</div>}
-    {dialogOpen && <IdeaDialog key={editing?.id ?? 'new'} idea={editing} onClose={() => setDialogOpen(false)} />}
+    {visible.length ? <div className="grid gap-x-6 sm:grid-cols-2 xl:grid-cols-3">{visible.map((idea) => <article key={idea.id} className="border-b border-[#e3e4de] py-5"><div className="flex items-start gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#f1e6c9] text-[#87682b]"><Lightbulb className="size-4" /></div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><h2 className="text-sm font-semibold leading-5">{idea.title}</h2><span className="shrink-0 rounded-full bg-[#edf0eb] px-2 py-1 text-[10px] text-[#596258]">{statusLabels[idea.status]}</span></div>{idea.notes && <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-[#747b72]">{idea.notes}</p>}<p className="mt-2 text-[11px] text-[#929990]">{new Intl.DateTimeFormat('es', { dateStyle: 'medium' }).format(new Date(idea.created_at))}{idea.source ? ` · ${idea.source}` : ''}{idea.campaign_id && campaignById.get(idea.campaign_id) ? ` · ${campaignById.get(idea.campaign_id)?.name}` : ''}</p>{idea.publication_id && <button type="button" onClick={() => onNavigate('Publicaciones', publicationById.get(idea.publication_id ?? '')?.title ?? '')} className="mt-1 text-[11px] font-medium text-[#526e58] hover:underline">Borrador: {publicationById.get(idea.publication_id)?.title ?? 'ver publicación'}</button>}<IdeaActions idea={idea} onEdit={() => { setEditing(idea); setDialogOpen(true) }} /></div></div></article>)}</div> : <div className="flex flex-col items-center py-16 text-center"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#e8ebe3] text-[#667361]"><Lightbulb className="size-5" /></div><h2 className="text-sm font-semibold">{ideas.length ? 'No hay resultados' : 'Todavía no hay ideas'}</h2><p className="mt-1 max-w-sm text-sm text-[#838a81]">{ideas.length ? 'Prueba con otra búsqueda o estado.' : 'Guarda una idea para tenerla a mano cuando planifiques contenido.'}</p>{!ideas.length && <button onClick={() => { setEditing(null); setDialogOpen(true) }} className="mt-4 flex items-center gap-2 rounded-md border border-[#cdd1c8] px-3 py-2 text-sm font-medium hover:bg-[#e8ebe3]"><FilePlus2 className="size-4" />Añadir idea</button>}</div>}
+    {dialogOpen && <IdeaDialog key={editing?.id ?? 'new'} idea={editing} campaigns={campaigns} onClose={() => setDialogOpen(false)} />}
   </section>
 }

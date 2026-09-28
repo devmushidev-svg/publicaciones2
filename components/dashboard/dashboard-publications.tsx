@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowUp, CalendarClock, FilePlus2, History, Image as ImageIcon, Search, Video, X } from 'lucide-react'
+import { Archive, ArrowUp, CalendarClock, CalendarPlus, FilePlus2, History, Image as ImageIcon, Search, Video, X } from 'lucide-react'
 import { archivePublication, savePublication } from '@/app/actions/publications'
 import {
   publicationPlatforms,
@@ -12,7 +12,7 @@ import {
   type PublicationRecord,
   type PublicationStatus,
 } from '@/lib/dashboard/publications'
-import { dateTimeInputValue } from '@/lib/date-time'
+import type { ScheduledPostRecord } from '@/lib/dashboard/schedule'
 import type { CategoryOption, TagOption } from '@/components/dashboard/dashboard-taxonomy'
 import type { MediaAssetRecord } from '@/lib/dashboard/library'
 import { DashboardPublicationHistory, MarkPublishedButton } from '@/components/dashboard/dashboard-publication-history'
@@ -31,7 +31,7 @@ const statusStyles: Record<PublicationStatus, string> = {
   archived: 'bg-[#f0ece4] text-[#75684f]',
 }
 
-const filters: Array<'all' | PublicationStatus> = ['all', 'draft', 'scheduled', 'published', 'archived']
+const filters: Array<'all' | PublicationStatus> = ['all', 'draft', 'published', 'archived']
 
 function scheduledLabel(value: string | null, timezone: string) {
   if (!value) return 'Sin fecha'
@@ -47,7 +47,7 @@ type DialogProps = {
   assets: MediaAssetRecord[]
 }
 
-export function PublicationDialog({ publication, onClose, initialDate = '', timezone = 'America/Tegucigalpa', categories, tags, assets }: DialogProps & { initialDate?: string }) {
+export function PublicationDialog({ publication, onClose, timezone = 'America/Tegucigalpa', categories, tags, assets }: DialogProps) {
   const router = useRouter()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [state, formAction, pending] = useActionState<PublicationActionState, FormData>(savePublication, {})
@@ -86,7 +86,7 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 id="publication-dialog-title" className="font-serif text-2xl">{publication ? 'Editar publicación' : 'Nueva publicación'}</h2>
-            <p className="mt-1 text-sm text-[#747b72]">Guarda un borrador o programa la fecha de salida.</p>
+            <p className="mt-1 text-sm text-[#747b72]">Guarda el contenido. Prográmalo después desde el calendario.</p>
           </div>
           <button type="button" aria-label="Cerrar" onClick={() => dialogRef.current?.close()} className="rounded-md p-2 text-[#737b72] hover:bg-[#e8ebe3]"><X className="size-4" /></button>
         </div>
@@ -104,7 +104,7 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
           </label>
           <label className="text-sm font-medium">Estado
             <select name="status" defaultValue={publication?.status ?? 'draft'} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20">
-              {(['draft', 'scheduled', 'published', 'archived'] as const).map((status) => <option key={status} value={status} disabled={status === 'published' && publication?.status !== 'published'}>{status === 'published' && publication?.status !== 'published' ? 'Publicada (registra su uso)' : statusLabels[status]}</option>)}
+              {(['draft', 'published', 'archived'] as const).map((status) => <option key={status} value={status} disabled={status === 'published' && publication?.status !== 'published'}>{status === 'published' && publication?.status !== 'published' ? 'Publicada (registra su uso)' : statusLabels[status]}</option>)}
             </select>
           </label>
           <label className="text-sm font-medium">Categoría
@@ -112,9 +112,6 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
               <option value="">Sin categoría</option>
               {categories.map((category) => <option key={category.id} value={category.id} disabled={category.is_archived && category.id !== publication?.category_id}>{category.name}{category.is_archived ? ' (archivada)' : ''}</option>)}
             </select>
-          </label>
-          <label className="text-sm font-medium sm:col-span-2">Programar para
-            <input name="scheduled_for" type="datetime-local" defaultValue={publication ? dateTimeInputValue(publication.scheduled_for, timezone) : initialDate} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
           </label>
           <fieldset className="sm:col-span-2">
             <legend className="text-sm font-medium">Plataformas</legend>
@@ -182,9 +179,11 @@ type DashboardPublicationsProps = {
   tags: TagOption[]
   assets: MediaAssetRecord[]
   initialSearch?: string
+  scheduledPosts: ScheduledPostRecord[]
+  onSchedule: (publicationId: string) => void
 }
 
-export function DashboardPublications({ publications, history, hasError, historyError, timezone, categories, tags, assets, initialSearch = '' }: DashboardPublicationsProps) {
+export function DashboardPublications({ publications, history, hasError, historyError, timezone, categories, tags, assets, initialSearch = '', scheduledPosts, onSchedule }: DashboardPublicationsProps) {
   const [filter, setFilter] = useState<'all' | PublicationStatus>('all')
   const [view, setView] = useState<'content' | 'history'>('content')
   const [search, setSearch] = useState(initialSearch)
@@ -193,11 +192,19 @@ export function DashboardPublications({ publications, history, hasError, history
   const closeDialog = useCallback(() => setDialogOpen(false), [])
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets])
   const historyOccasions = useMemo(() => new Set(history.map((entry) => entry.idempotency_key)).size, [history])
+  const nextPlanned = useMemo(() => {
+    const now = new Date().getTime()
+    const map = new Map<string, string>()
+    for (const slot of [...scheduledPosts].sort((a, b) => a.planned_for.localeCompare(b.planned_for))) {
+      if (slot.status === 'planned' && Date.parse(slot.planned_for) >= now && !map.has(slot.publication_id)) map.set(slot.publication_id, slot.planned_for)
+    }
+    return map
+  }, [scheduledPosts])
 
   const counts = useMemo(() => ({
     all: publications.length,
-    draft: publications.filter(({ status }) => status === 'draft').length,
-    scheduled: publications.filter(({ status }) => status === 'scheduled').length,
+    draft: publications.filter(({ status }) => status === 'draft' || status === 'scheduled').length,
+    scheduled: 0,
     published: publications.filter(({ status }) => status === 'published').length,
     archived: publications.filter(({ status }) => status === 'archived').length,
   }), [publications])
@@ -205,7 +212,7 @@ export function DashboardPublications({ publications, history, hasError, history
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es')
     return publications.filter((publication) => {
-      const matchesStatus = filter === 'all' || publication.status === filter
+      const matchesStatus = filter === 'all' || publication.status === filter || (filter === 'draft' && publication.status === 'scheduled')
       const matchesSearch = !query || `${publication.title} ${publication.category ?? ''} ${publication.body}`.toLocaleLowerCase('es').includes(query)
       return matchesStatus && matchesSearch
     })
@@ -224,7 +231,7 @@ export function DashboardPublications({ publications, history, hasError, history
   return (
     <section className="mx-auto max-w-[1400px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><p className="text-xs font-semibold uppercase text-[#74816f]">Espacio de trabajo</p><h1 className="mt-2 font-serif text-3xl sm:text-4xl">Publicaciones</h1><p className="mt-2 text-sm text-[#747b72]">Organiza borradores, programación y contenido publicado.</p></div>
+        <div><p className="text-xs font-semibold uppercase text-[#74816f]">Espacio de trabajo</p><h1 className="mt-2 font-serif text-3xl sm:text-4xl">Publicaciones</h1><p className="mt-2 text-sm text-[#747b72]">Organiza borradores y contenido publicado; programa desde cada fila o el calendario.</p></div>
         <button onClick={openNew} className="flex h-10 w-fit items-center gap-2 rounded-md bg-[#222824] px-4 text-sm font-semibold text-white hover:bg-[#39413b]"><FilePlus2 className="size-4" />Nueva publicación</button>
       </div>
 
@@ -255,7 +262,8 @@ export function DashboardPublications({ publications, history, hasError, history
               </span>
             </button>
             <div className="flex items-center justify-between gap-4 sm:justify-end">
-              <p className="flex items-center gap-1.5 text-xs text-[#838a81]"><CalendarClock className="size-3.5" />{publication.status === 'published' ? scheduledLabel(publication.published_at, timezone) : scheduledLabel(publication.scheduled_for, timezone)}</p>
+              <p className="flex items-center gap-1.5 text-xs text-[#838a81]"><CalendarClock className="size-3.5" />{nextPlanned.has(publication.id) ? `Programada: ${scheduledLabel(nextPlanned.get(publication.id) ?? null, timezone)}` : publication.status === 'published' ? `Último uso: ${scheduledLabel(publication.published_at, timezone)}` : 'Sin programar'}</p>
+              {publication.status !== 'archived' && <button type="button" onClick={() => onSchedule(publication.id)} title="Programar en el calendario" aria-label={`Programar ${publication.title}`} className="rounded-md p-2 text-[#65745f] hover:bg-[#e8ebe3]"><CalendarPlus className="size-4" /></button>}
               {publication.status !== 'archived' && <MarkPublishedButton publication={publication} timezone={timezone} />}
               {publication.status !== 'archived' && <ArchiveButton id={publication.id} />}
             </div>

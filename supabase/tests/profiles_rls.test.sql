@@ -31,22 +31,20 @@ select is(
   0,
   'users cannot read another profile'
 );
+update public.profiles set full_name = 'Updated Owner'
+where id = '10000000-0000-4000-8000-000000000001';
+update public.profiles set full_name = 'Tampered'
+where id = '10000000-0000-4000-8000-000000000002';
+
+reset role;
 select is(
-  (with changed as (
-    update public.profiles set full_name = 'Updated Owner'
-    where id = '10000000-0000-4000-8000-000000000001'
-    returning id
-  ) select count(*)::integer from changed),
-  1,
+  (select full_name from public.profiles where id = '10000000-0000-4000-8000-000000000001'),
+  'Updated Owner',
   'users can update their own profile'
 );
 select is(
-  (with changed as (
-    update public.profiles set full_name = 'Tampered'
-    where id = '10000000-0000-4000-8000-000000000002'
-    returning id
-  ) select count(*)::integer from changed),
-  0,
+  (select full_name from public.profiles where id = '10000000-0000-4000-8000-000000000002'),
+  'Other Owner',
   'users cannot update another profile'
 );
 

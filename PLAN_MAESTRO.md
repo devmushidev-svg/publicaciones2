@@ -13,11 +13,11 @@ Construir un espacio de trabajo para crear y organizar publicaciones, registrar 
 | 2 | Autenticación y perfil | Completa |
 | 3 | Categorías y etiquetas | Completa |
 | 4 | Biblioteca y Storage | Completa |
-| 5 | Historial y registro manual de publicaciones | Código local; migración confirmada como ejecutada en Supabase (captura `Success`) |
-| 6 | Preferencias, recomendador determinista y dashboard real | En curso: migración, algoritmo, pruebas y configuración integrados localmente; pendiente aplicar `20260925000800_recommendations.sql` y cerrar verificación |
-| 7 | Generación de copy con IA | Implementada localmente; pendiente migración, clave del proveedor y verificación final |
-| 8 | Calendario interno y campañas | Pendiente |
-| 9 | Ideas y analítica operativa | Pendiente |
+| 5 | Historial y registro manual de publicaciones | Cerrada en código y pruebas (pgTAP + API con usuarios A/B/anónimo + UI). Pendiente: verificar en el proyecto remoto con `verify_remote_state.sql` |
+| 6 | Preferencias, recomendador determinista y dashboard real | Cerrada en código y pruebas; el recomendador excluye contenido ya programado. Pendiente: confirmar `20260925000800` en el remoto |
+| 7 | Generación de copy con IA | Cerrada salvo activación: falta `OPENAI_API_KEY` en Vercel y una generación real. Proveedor probado con respuestas simuladas (éxito, cuota, límite, timeout, salida inválida) |
+| 8 | Calendario interno y campañas | Implementada: programar, mover (diálogo y arrastrar), cancelar, registrar uso desde la programación, campañas con vigencia y meta |
+| 9 | Ideas y analítica operativa | Implementada: oportunidades explicadas con el historial, ideas ligadas a campañas y borradores, actividad real en Rendimiento |
 | 10 | OAuth y conexiones con Meta | Pendiente |
 | 11 | Importación y analítica de métricas sociales | Pendiente |
 | 12 | Rendimiento como señal para recomendaciones | Pendiente |
@@ -32,7 +32,8 @@ Construir un espacio de trabajo para crear y organizar publicaciones, registrar 
 - [x] Impedir marcar una publicación como publicada sin historial.
 - [x] TypeScript, ESLint y build pasan localmente.
 - [x] Aplicar la migración de historial al proyecto Supabase conectado (confirmación visual del usuario).
-- [ ] Verificar en Supabase el flujo de escritura, reintento y lectura con RLS.
+- [x] Verificar escritura, reintento, conflicto de clave, fecha futura y RLS con usuarios A, B y anónimo (local: pgTAP y `tests/integration`).
+- [ ] Ejecutar `supabase/verify_remote_state.sql` en el proyecto remoto.
 - [ ] Publicar código y migración juntos en `main` al cierre del cambio.
 
 ## Próxima fase: recomendador
@@ -45,9 +46,10 @@ Construir un espacio de trabajo para crear y organizar publicaciones, registrar 
 - [x] Elegir contenido elegible de forma determinista, evitando publicaciones programadas hoy y usos recientes; ponderar equilibrio, prioridad y variedad de etiquetas.
 - [x] Mostrar recomendaciones explicadas en Inicio y permitir ajustar las reglas en Configuración.
 - [x] Añadir pruebas unitarias del algoritmo.
-- [ ] Aplicar `20260925000800_recommendations.sql` en Supabase y comprobar lectura/escritura con RLS.
-- [ ] Verificar manualmente Inicio y Configuración con una cuenta con datos.
-- [ ] Cerrar lint, typecheck, pruebas y build; publicar el conjunto al final en `main` según la instrucción del usuario.
+- [x] Comprobar lectura/escritura con RLS y conversión de tipos vía PostgREST (local).
+- [ ] Confirmar `20260925000800_recommendations.sql` en el remoto (esquema y registro).
+- [x] Verificar Inicio con una cuenta con datos (prueba de UI con Playwright).
+- [x] Lint, typecheck, pruebas y build.
 
 ## Fase 7: generación de copy con IA
 
@@ -56,9 +58,28 @@ Construir un espacio de trabajo para crear y organizar publicaciones, registrar 
 - [x] Registrar intentos, variantes, tokens y estado; restringir lectura a cada usuario.
 - [x] Aplicar cuota mensual atómica de 30 generaciones por usuario y evitar acceso anónimo a funciones.
 - [x] Cubrir validación de respuestas estructuradas con pruebas unitarias.
-- [ ] Aplicar `20260928000100_ai_copy_generation.sql` en Supabase y verificar cuota/RLS con dos usuarios.
-- [ ] Configurar `OPENAI_API_KEY` como variable privada en Vercel; probar éxito, cuota del proveedor, timeout y respuesta inválida.
-- [ ] Ejecutar lint, typecheck, pruebas y build; publicar junto con las migraciones al cierre en `main`.
+- [x] Verificar cuota (30/mes, independiente por usuario), RLS y acceso anónimo (local).
+- [x] Guardar borrador de forma atómica e idempotente (`20260928000200`); aceptar las 6 plataformas ofrecidas; cerrar intentos abandonados.
+- [ ] Aplicar `20260928000100` y `20260928000200` en el remoto.
+- [x] Probar éxito, cuota del proveedor, límite, timeout y respuesta inválida con un proveedor simulado.
+- [ ] Configurar `OPENAI_API_KEY` como variable privada en Vercel y hacer una generación real.
+- [x] Lint, typecheck, pruebas y build.
+
+## Fase 8: calendario interno y campañas
+
+- [x] `scheduled_posts`: una fila por intención (publicación, fecha, plataformas previstas, campaña, notas). Estados `planned`, `cancelled`, `fulfilled`. Solo lectura directa; toda escritura pasa por funciones que validan dueño, fecha futura, vigencia de campaña en la zona horaria de la cuenta y un solo plan por publicación y día local.
+- [x] Crear (idempotente con id generado en el cliente), mover (diálogo o arrastrar a otro día conservando la hora local), cancelar (idempotente).
+- [x] Registrar el uso desde la programación: escribe el historial con `record_my_publication_use` y marca el plan como cumplido. Una programación nunca escribe historial por sí sola; las vencidas sin registro se muestran como "pendiente de confirmar".
+- [x] Campañas con inicio, fin, color, objetivo y meta opcional; no se pueden acortar dejando programaciones fuera; se archivan.
+- [x] Las programaciones antiguas (`publications.status = 'scheduled'`) se migran a `scheduled_posts`; el editor ya no programa.
+- [x] Archivar una publicación cancela sus programaciones pendientes.
+
+## Fase 9: ideas y analítica operativa
+
+- [x] Oportunidades calculadas solo con historial, calendario, biblioteca y reglas: programaciones vencidas, cobertura de la semana, ritmo real frente al objetivo, categorías por debajo de su objetivo, repeticiones, contenido que ya descansó, borradores y archivos sin usar, campañas atrasadas. Cada una explica sus datos.
+- [x] Guardar una oportunidad como idea (idempotente por clave) y programar desde ella.
+- [x] Ideas con campaña; conversión a borrador atómica e idempotente que enlaza la idea con su borrador.
+- [x] "Actividad real" en Rendimiento: ocasiones por día frente al objetivo, equilibrio por categoría frente al objetivo, plataformas, días y horas, contenido más reutilizado y cumplimiento del calendario. Separada de "Métricas de redes", que sigue sin datos inventados.
 
 ## Orden de trabajo
 
