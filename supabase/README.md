@@ -55,3 +55,7 @@ Before applying to the remote project, run `verify_remote_state.sql` in the SQL 
 
 - `pnpm db:test` runs every pgTAP file in `tests/` against the local stack.
 - `pnpm test:integration` signs up real users against the local Auth + PostgREST and checks phases 5–9 end to end (users A and B, anonymous, retries, duplicates, time zones). It needs `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from `supabase status` and must never point at production.
+
+## Applying phases 5–9 from the SQL Editor
+
+`apply_phases_5_to_9.sql` bundles migrations 20260925000700 through 20260928000400 in one transaction. It is idempotent (existing tables, policies and triggers are kept or recreated, no data is deleted), stops early if phases 3–4 are missing, and ends with a check that should show `true` on every row. It does not write to `supabase_migrations.schema_migrations`; if you later use `supabase db push` against that project, reconcile the history first.
