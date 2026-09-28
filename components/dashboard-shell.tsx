@@ -5,7 +5,7 @@ import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { DashboardOverview } from '@/components/dashboard/dashboard-overview'
 import { DashboardSidebar } from '@/components/dashboard/dashboard-sidebar'
 import type { OverviewData } from '@/lib/dashboard/overview'
-import type { PublicationRecord } from '@/lib/dashboard/publications'
+import type { PublicationHistoryRecord, PublicationRecord } from '@/lib/dashboard/publications'
 import { DashboardPublications, PublicationDialog } from '@/components/dashboard/dashboard-publications'
 import { DashboardLibrary } from '@/components/dashboard/dashboard-library'
 import type { MediaAssetRecord } from '@/lib/dashboard/library'
@@ -16,20 +16,28 @@ import { DashboardConnections, type SocialConnectionRecord } from '@/components/
 import { DashboardSettings } from '@/components/dashboard/dashboard-settings'
 import { DashboardSearch } from '@/components/dashboard/dashboard-search'
 import { DashboardTaxonomy, type CategoryOption, type TagOption } from '@/components/dashboard/dashboard-taxonomy'
+import { DashboardRecommendationSettings } from '@/components/dashboard/dashboard-recommendation-settings'
+import { DashboardAiCopy } from '@/components/dashboard/dashboard-ai-copy'
 
 type DashboardShellProps = {
   userName: string
   overview: OverviewData
   publications: PublicationRecord[]
+  history: PublicationHistoryRecord[]
   publicationsError: boolean
+  historyError: boolean
   categories: CategoryOption[]
   tags: TagOption[]
   taxonomyError: boolean
+  recommendationSettings: { postsPerDay: number; minimumRepeatDays: number; balanceWindowDays: number }
+  categoryPreferences: Array<{ category_id: string; target_share: number | null; priority: number; is_enabled: boolean }>
+  recommendationSettingsError: boolean
   assets: MediaAssetRecord[]
   mediaError: boolean
   storageError: boolean
   ideas: IdeaRecord[]
   ideasError: boolean
+  aiMonthlyUsage: number | null
   metrics: MetricRecord[]
   metricsError: boolean
   connections: SocialConnectionRecord[]
@@ -37,7 +45,7 @@ type DashboardShellProps = {
   settings: { email: string; fullName: string; timezone: string; weekStartsOn: number; emailDigest: boolean; hasError: boolean }
 }
 
-export function DashboardShell({ userName, overview, publications, publicationsError, categories, tags, taxonomyError, assets, mediaError, storageError, ideas, ideasError, metrics, metricsError, connections, connectionsError, settings }: DashboardShellProps) {
+export function DashboardShell({ userName, overview, publications, history, publicationsError, historyError, categories, tags, taxonomyError, recommendationSettings, categoryPreferences, recommendationSettingsError, assets, mediaError, storageError, ideas, ideasError, aiMonthlyUsage, metrics, metricsError, connections, connectionsError, settings }: DashboardShellProps) {
   const [active, setActive] = useState('Inicio')
   const [searchTarget, setSearchTarget] = useState<{ section: string; query: string } | null>(null)
   const [homePublicationOpen, setHomePublicationOpen] = useState(false)
@@ -95,14 +103,16 @@ export function DashboardShell({ userName, overview, publications, publicationsE
           ? <DashboardCalendar publications={publications} categories={categories} tags={tags} assets={assets} weekStartsOn={settings.weekStartsOn} timezone={settings.timezone} />
             : active === 'Ideas'
               ? <DashboardIdeas key={`ideas-${activeSearch}`} ideas={ideas} hasError={ideasError} initialSearch={activeSearch} />
+              : active === 'Crear con IA'
+                ? <DashboardAiCopy initialUsed={aiMonthlyUsage} />
               : active === 'Rendimiento'
                 ? <DashboardPerformance metrics={metrics} publications={publications} hasError={metricsError} />
                 : active === 'Conexiones'
                   ? <DashboardConnections connections={connections} hasError={connectionsError} />
                   : active === 'Configuración'
-                    ? <><DashboardSettings {...settings} /><DashboardTaxonomy categories={categories} tags={tags} hasError={taxonomyError} /></>
+                    ? <><DashboardSettings {...settings} /><DashboardRecommendationSettings categories={categories} settings={recommendationSettings} preferences={categoryPreferences} hasError={recommendationSettingsError} /><DashboardTaxonomy categories={categories} tags={tags} hasError={taxonomyError} /></>
                     : active === 'Publicaciones'
-                      ? <DashboardPublications key={`publications-${activeSearch}`} publications={publications} hasError={publicationsError} timezone={settings.timezone} categories={categories} tags={tags} assets={assets} initialSearch={activeSearch} />
+                      ? <DashboardPublications key={`publications-${activeSearch}`} publications={publications} history={history} hasError={publicationsError} historyError={historyError} timezone={settings.timezone} categories={categories} tags={tags} assets={assets} initialSearch={activeSearch} />
                       : <DashboardOverview userName={userName} overview={overview} onNavigate={(section) => navigateToSection(section)} onCreatePublication={() => setHomePublicationOpen(true)} />}
       </main>
       {homePublicationOpen && <PublicationDialog publication={null} onClose={() => setHomePublicationOpen(false)} timezone={settings.timezone} categories={categories} tags={tags} assets={assets} />}

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { recommendDailyContent, type DailyRecommendation, type RecommendationCategory } from '@/lib/recommendations/scorer'
 
 export type OverviewPublication = {
   id: string
@@ -17,6 +18,7 @@ export type OverviewData = {
   todayLabel: string
   publications: OverviewPublication[]
   ideas: OverviewIdea[]
+  recommendations: DailyRecommendation[]
   chart: number[]
   reachYesterday: number
   reachChange: number | null
@@ -88,7 +90,7 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
   const todayStartUtc = startOfDayUtc(today, timezone)
   const tomorrowStartUtc = startOfDayUtc(addDays(today, 1), timezone)
 
-  const [publicationsResult, ideasResult, metricsResult] = await Promise.all([
+  const [publicationsResult, ideasResult, metricsResult, settingsResult, categoryResult, categoryPreferenceResult, candidateResult, tagResult, historyResult, scheduledResult] = await Promise.all([
     supabase
       .from('publications')
       .select('id,title,category_id,categories(name),scheduled_for,platforms')
@@ -111,6 +113,13 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
       .gte('measured_on', chartStart)
       .lte('measured_on', yesterday)
       .order('measured_on', { ascending: true }),
+    supabase.from('recommendation_settings').select('posts_per_day,minimum_repeat_days,balance_window_days').eq('user_id', userId).maybeSingle(),
+    supabase.from('categories').select('id,name').eq('user_id', userId).eq('is_archived', false),
+    supabase.from('category_preferences').select('category_id,target_share,priority,is_enabled').eq('user_id', userId),
+    supabase.from('publications').select('id,title,category_id,created_at').eq('user_id', userId).in('status', ['draft', 'published']).order('created_at', { ascending: false }).limit(1000),
+    supabase.from('publication_tags').select('publication_id,tag_id').eq('user_id', userId),
+    supabase.from('publication_history').select('publication_id,published_at,category_snapshot').eq('user_id', userId).gte('published_at', new Date(Date.now() - 365 * 86_400_000).toISOString()).order('published_at', { ascending: false }).limit(5000),
+    supabase.from('publications').select('id').eq('user_id', userId).eq('status', 'scheduled').gte('scheduled_for', todayStartUtc).lt('scheduled_for', tomorrowStartUtc),
   ])
 
   const metricRows = metricsResult.data ?? []
@@ -122,6 +131,37 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
   const chart = Array.from({ length: 12 }, (_, index) => reachByDay.get(addDays(chartStart, index)) ?? 0)
   const reachYesterday = reachByDay.get(yesterday) ?? 0
   const reachBefore = reachByDay.get(dayBefore) ?? 0
+  const recommendationSettings = {
+    postsPerDay: settingsResult.data?.posts_per_day ?? 3,
+    minimumRepeatDays: settingsResult.data?.minimum_repeat_days ?? 14,
+    balanceWindowDays: settingsResult.data?.balance_window_days ?? 14,
+  }
+  const categoryPreferences = new Map((categoryPreferenceResult.data ?? []).map((item) => [item.category_id, item]))
+  const recentCutoff = Date.now() - recommendationSettings.balanceWindowDays * 86_400_000
+  const recentUses = new Map<string, number>()
+  const categoryNames = new Map((categoryResult.data ?? []).map((item) => [item.name, item.id]))
+  const lastUse = new Map<string, string>()
+  for (const row of historyResult.data ?? []) {
+    if (row.publication_id && !lastUse.has(row.publication_id)) lastUse.set(row.publication_id, row.published_at)
+    const categoryId = row.category_snapshot ? categoryNames.get(row.category_snapshot) : undefined
+    if (categoryId && new Date(row.published_at).getTime() >= recentCutoff) recentUses.set(categoryId, (recentUses.get(categoryId) ?? 0) + 1)
+  }
+  const recommendationCategories: RecommendationCategory[] = (categoryResult.data ?? []).map((category) => {
+    const preference = categoryPreferences.get(category.id)
+    return { id: category.id, name: category.name, priority: preference?.priority ?? 2, targetShare: preference?.target_share ?? null, enabled: preference?.is_enabled ?? true, recentUses: recentUses.get(category.id) ?? 0 }
+  })
+  const tagsByPublication = new Map<string, string[]>()
+  for (const tag of tagResult.data ?? []) tagsByPublication.set(tag.publication_id, [...(tagsByPublication.get(tag.publication_id) ?? []), tag.tag_id])
+  const scheduledToday = new Set((scheduledResult.data ?? []).map((item) => item.id))
+  const recommendations = recommendDailyContent((candidateResult.data ?? []).map((item) => ({
+    id: item.id,
+    title: item.title,
+    categoryId: item.category_id,
+    tagIds: tagsByPublication.get(item.id) ?? [],
+    createdAt: item.created_at,
+    lastUsedAt: lastUse.get(item.id) ?? null,
+    scheduledToday: scheduledToday.has(item.id),
+  })), recommendationCategories, recommendationSettings)
 
   return {
     timezone,
@@ -139,9 +179,10 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
       return { id: publication.id, title: publication.title, category: category ?? null, scheduled_for: publication.scheduled_for, platforms: publication.platforms }
     }),
     ideas: ideasResult.data ?? [],
+    recommendations,
     chart,
     reachYesterday,
     reachChange: reachBefore ? ((reachYesterday - reachBefore) / reachBefore) * 100 : null,
-    error: Boolean(preferencesError || publicationsResult.error || ideasResult.error || metricsResult.error),
+    error: Boolean(preferencesError || publicationsResult.error || ideasResult.error || metricsResult.error || settingsResult.error || categoryResult.error || categoryPreferenceResult.error || candidateResult.error || tagResult.error || historyResult.error || scheduledResult.error),
   }
 }

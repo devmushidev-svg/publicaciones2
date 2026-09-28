@@ -4,7 +4,7 @@ import { getOverviewData } from '@/lib/dashboard/overview'
 import { createClient } from '@/lib/supabase/server'
 import type { MetricRecord } from '@/components/dashboard/dashboard-performance'
 import type { CategoryOption, TagOption } from '@/components/dashboard/dashboard-taxonomy'
-import type { PublicationRecord } from '@/lib/dashboard/publications'
+import { publicationHistoryPageSize, type PublicationHistoryRecord, type PublicationRecord } from '@/lib/dashboard/publications'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +22,7 @@ export default async function Page() {
     { data: profile },
     overview,
     { data: publications, error: publicationsError },
+    { data: historyRows, error: historyError },
     { data: categoryRows, error: categoriesError },
     { data: tagRows, error: tagsError },
     { data: mediaRows, error: mediaError },
@@ -31,6 +32,9 @@ export default async function Page() {
     { data: metricRows, error: metricsError },
     { data: connectionRows, error: connectionsError },
     { data: preferences, error: preferencesError },
+    { data: recommendationSettings, error: recommendationSettingsError },
+    { data: categoryPreferences, error: categoryPreferencesError },
+    { count: aiMonthlyUsage },
   ] = await Promise.all([
     supabase.from('profiles').select('full_name,timezone').eq('id', userId).maybeSingle(),
     getOverviewData(supabase, userId),
@@ -40,6 +44,13 @@ export default async function Page() {
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(1000),
+    supabase
+      .from('publication_history')
+      .select('id,publication_id,idempotency_key,platform,published_at,title_snapshot,copy_snapshot,category_snapshot,tags_snapshot,media_snapshot,notes')
+      .eq('user_id', userId)
+      .order('published_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(0, publicationHistoryPageSize - 1),
     supabase.from('categories').select('id,name,color,is_archived').eq('user_id', userId).order('name'),
     supabase.from('tags').select('id,name,is_archived').eq('user_id', userId).order('name'),
     supabase
@@ -69,6 +80,9 @@ export default async function Page() {
       .eq('user_id', userId)
       .order('connected_at', { ascending: false }),
     supabase.from('account_preferences').select('timezone,week_starts_on,email_digest').eq('user_id', userId).maybeSingle(),
+    supabase.from('recommendation_settings').select('posts_per_day,minimum_repeat_days,balance_window_days').eq('user_id', userId).maybeSingle(),
+    supabase.from('category_preferences').select('category_id,target_share,priority,is_enabled').eq('user_id', userId),
+    supabase.from('ai_copy_generations').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()),
   ])
 
   let storageError = false
@@ -119,6 +133,20 @@ export default async function Page() {
       tagIds: tagsByPublication.get(publication.id) ?? [],
     }
   })
+  const historyBase = (historyRows ?? []) as unknown as PublicationHistoryRecord[]
+  const historyPaths = [...new Set(historyBase.flatMap((entry) => entry.media_snapshot[0]?.storage_path ?? []))]
+    .filter((path) => !signedUrls.has(path))
+  const historyBatches = Array.from({ length: Math.ceil(historyPaths.length / 100) }, (_, index) => historyPaths.slice(index * 100, (index + 1) * 100))
+  const historyUrlResults = await Promise.all(historyBatches.map((batch) => supabase.storage.from('publication-media').createSignedUrls(batch, 3600)))
+  for (const { data } of historyUrlResults) {
+    for (const item of data ?? []) {
+      if (item.path && item.signedUrl) signedUrls.set(item.path, item.signedUrl)
+    }
+  }
+  const historyRecords = historyBase.map((entry) => ({
+    ...entry,
+    media_snapshot: entry.media_snapshot.map((media) => ({ ...media, signed_url: signedUrls.get(media.storage_path) ?? null })),
+  }))
 
   const metadataName = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : ''
   const userName = profile?.full_name || metadataName || user.email?.split('@')[0] || 'Tu cuenta'
@@ -127,15 +155,25 @@ export default async function Page() {
     userName={userName}
     overview={overview}
     publications={publicationRecords}
+    history={historyRecords}
     publicationsError={Boolean(publicationsError || mediaLinksError || tagLinksError)}
+    historyError={Boolean(historyError)}
     categories={categoryOptions}
     tags={tagOptions}
     taxonomyError={Boolean(categoriesError || tagsError)}
+    recommendationSettings={{
+      postsPerDay: recommendationSettings?.posts_per_day ?? 3,
+      minimumRepeatDays: recommendationSettings?.minimum_repeat_days ?? 14,
+      balanceWindowDays: recommendationSettings?.balance_window_days ?? 14,
+    }}
+    categoryPreferences={categoryPreferences ?? []}
+    recommendationSettingsError={Boolean(recommendationSettingsError || categoryPreferencesError)}
     assets={assets}
     mediaError={Boolean(mediaError || mediaLinksError)}
     storageError={storageError}
     ideas={ideas ?? []}
     ideasError={Boolean(ideasError)}
+    aiMonthlyUsage={aiMonthlyUsage}
     metrics={(metricRows ?? []) as MetricRecord[]}
     metricsError={Boolean(metricsError)}
     connections={connectionRows ?? []}

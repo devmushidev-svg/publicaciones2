@@ -15,6 +15,7 @@ import {
 const navItems = [
   { label: 'Inicio', icon: LayoutDashboard },
   { label: 'Publicaciones', icon: PenLine },
+  { label: 'Crear con IA', icon: Sparkles },
   { label: 'Biblioteca', icon: FolderOpen },
   { label: 'Calendario', icon: CalendarDays },
   { label: 'Ideas', icon: Lightbulb },

@@ -34,6 +34,12 @@ export async function savePublication(
 
   if (!title || title.length > 200) return { error: 'El título es obligatorio y debe tener máximo 200 caracteres.' }
   if (!statuses.has(status)) return { error: 'Selecciona un estado válido.' }
+  if (status === 'published') {
+    if (!id) return { error: 'Registra el uso de una publicación para marcarla como publicada.' }
+    const { data: current, error } = await supabase.from('publications').select('status').eq('id', id).eq('user_id', user.id).maybeSingle()
+    if (error || !current) return { error: 'No encontramos esa publicación.' }
+    if (current.status !== 'published') return { error: 'Usa “Marcar publicada” para guardar también el historial.' }
+  }
   if (status === 'scheduled' && !scheduledValue) return { error: 'Indica cuándo se publicará.' }
   if (mediaIds.length > 20 || tagIds.length > 30) return { error: 'Selecciona hasta 20 archivos y 30 etiquetas.' }
   if ([...mediaIds, ...tagIds].some((item) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item))) {

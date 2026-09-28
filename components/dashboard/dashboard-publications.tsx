@@ -3,17 +3,19 @@
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowUp, CalendarClock, FilePlus2, Image as ImageIcon, Search, Video, X } from 'lucide-react'
+import { Archive, ArrowUp, CalendarClock, FilePlus2, History, Image as ImageIcon, Search, Video, X } from 'lucide-react'
 import { archivePublication, savePublication } from '@/app/actions/publications'
 import {
   publicationPlatforms,
   type PublicationActionState,
+  type PublicationHistoryRecord,
   type PublicationRecord,
   type PublicationStatus,
 } from '@/lib/dashboard/publications'
 import { dateTimeInputValue } from '@/lib/date-time'
 import type { CategoryOption, TagOption } from '@/components/dashboard/dashboard-taxonomy'
 import type { MediaAssetRecord } from '@/lib/dashboard/library'
+import { DashboardPublicationHistory, MarkPublishedButton } from '@/components/dashboard/dashboard-publication-history'
 
 const statusLabels: Record<PublicationStatus, string> = {
   draft: 'Borrador',
@@ -102,7 +104,7 @@ export function PublicationDialog({ publication, onClose, initialDate = '', time
           </label>
           <label className="text-sm font-medium">Estado
             <select name="status" defaultValue={publication?.status ?? 'draft'} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20">
-              {(['draft', 'scheduled', 'published', 'archived'] as const).map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
+              {(['draft', 'scheduled', 'published', 'archived'] as const).map((status) => <option key={status} value={status} disabled={status === 'published' && publication?.status !== 'published'}>{status === 'published' && publication?.status !== 'published' ? 'Publicada (registra su uso)' : statusLabels[status]}</option>)}
             </select>
           </label>
           <label className="text-sm font-medium">Categoría
@@ -172,7 +174,9 @@ export function ArchiveButton({ id }: { id: string }) {
 
 type DashboardPublicationsProps = {
   publications: PublicationRecord[]
+  history: PublicationHistoryRecord[]
   hasError: boolean
+  historyError: boolean
   timezone: string
   categories: CategoryOption[]
   tags: TagOption[]
@@ -180,13 +184,15 @@ type DashboardPublicationsProps = {
   initialSearch?: string
 }
 
-export function DashboardPublications({ publications, hasError, timezone, categories, tags, assets, initialSearch = '' }: DashboardPublicationsProps) {
+export function DashboardPublications({ publications, history, hasError, historyError, timezone, categories, tags, assets, initialSearch = '' }: DashboardPublicationsProps) {
   const [filter, setFilter] = useState<'all' | PublicationStatus>('all')
+  const [view, setView] = useState<'content' | 'history'>('content')
   const [search, setSearch] = useState(initialSearch)
   const [editing, setEditing] = useState<PublicationRecord | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const closeDialog = useCallback(() => setDialogOpen(false), [])
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets])
+  const historyOccasions = useMemo(() => new Set(history.map((entry) => entry.idempotency_key)).size, [history])
 
   const counts = useMemo(() => ({
     all: publications.length,
@@ -222,6 +228,13 @@ export function DashboardPublications({ publications, hasError, timezone, catego
         <button onClick={openNew} className="flex h-10 w-fit items-center gap-2 rounded-md bg-[#222824] px-4 text-sm font-semibold text-white hover:bg-[#39413b]"><FilePlus2 className="size-4" />Nueva publicación</button>
       </div>
 
+      <div className="mb-5 flex gap-1 border-b border-[#dedfd8]" role="tablist" aria-label="Vistas de publicaciones">
+        <button type="button" role="tab" aria-selected={view === 'content'} onClick={() => setView('content')} className={`border-b-2 px-4 py-3 text-sm font-medium ${view === 'content' ? 'border-[#526e58] text-[#1f2422]' : 'border-transparent text-[#7b8279]'}`}>Contenido</button>
+        <button type="button" role="tab" aria-selected={view === 'history'} onClick={() => setView('history')} className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium ${view === 'history' ? 'border-[#526e58] text-[#1f2422]' : 'border-transparent text-[#7b8279]'}`}><History className="size-4" />Historial <span className="text-xs text-[#929990]">{historyOccasions}</span></button>
+      </div>
+
+      {view === 'history' ? <DashboardPublicationHistory key={history.map((entry) => entry.id).join('|')} history={history} hasError={historyError} timezone={timezone} /> : <>
+
       {hasError && <p role="status" className="mb-5 rounded-md border border-[#e7c8a2] bg-[#fff8ea] px-4 py-3 text-sm text-[#765c2c]">No se pudieron cargar todas las publicaciones.</p>}
 
       <div className="flex flex-col gap-4 border-b border-[#dedfd8] pb-4 lg:flex-row lg:items-center lg:justify-between">
@@ -243,6 +256,7 @@ export function DashboardPublications({ publications, hasError, timezone, catego
             </button>
             <div className="flex items-center justify-between gap-4 sm:justify-end">
               <p className="flex items-center gap-1.5 text-xs text-[#838a81]"><CalendarClock className="size-3.5" />{publication.status === 'published' ? scheduledLabel(publication.published_at, timezone) : scheduledLabel(publication.scheduled_for, timezone)}</p>
+              {publication.status !== 'archived' && <MarkPublishedButton publication={publication} timezone={timezone} />}
               {publication.status !== 'archived' && <ArchiveButton id={publication.id} />}
             </div>
           </article>
@@ -257,6 +271,7 @@ export function DashboardPublications({ publications, hasError, timezone, catego
       </div>
 
       {dialogOpen && <PublicationDialog key={editing?.id ?? 'new'} publication={editing} onClose={closeDialog} timezone={timezone} categories={categories} tags={tags} assets={assets} />}
+      </>}
     </section>
   )
 }

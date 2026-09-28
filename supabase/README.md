@@ -21,3 +21,20 @@ Apply `migrations/20260925000600_publication_editor.sql` only after verifying th
 After applying, verify that `media_assets.content_sha256` exists, `publications.media_ids` no longer exists, and authenticated users can execute `save_my_publication`. Run `tests/publication_editor.test.sql` with pgTAP against a disposable database to check atomic saves and cross-account ownership. The application code that calls the RPC must be deployed only after this migration succeeds. Do not run the pgTAP file against production because it creates temporary test users inside a transaction.
 
 The app uses only the public URL and publishable key. Do not add secret or service-role keys to `NEXT_PUBLIC_*` variables.
+
+## Publication history (20260925000700)
+
+Apply `migrations/20260925000700_publication_history.sql` after the publication editor migration. It adds append-only, per-user usage records, snapshots the title, copy, category, tags, and selected media, and grants authenticated users access only to their own history. `record_my_publication_use` records one row per selected platform with an idempotency key shared by the occasion. The dashboard action records a post already published elsewhere; it does not send content to a social network.
+
+The migration also prevents a new transition to `published` without a history row. Run `tests/publication_history.test.sql` only against a disposable Supabase database; it creates test users and content inside a transaction.
+
+## Daily recommendations (20260925000800)
+
+Run `migrations/20260925000800_recommendations.sql` after categories and publication history exist. It stores each account's daily suggestion count and reuse interval, plus enabled state, priority, and optional target share per category. Both tables use owner-only RLS. The migration tolerates a prior partial run; it does not delete saved preferences. The dashboard scorer is deterministic and reads publication history; it does not publish or schedule content. Validate with `pnpm test:unit`; apply database tests only against a disposable Supabase project.
+
+`tests/recommendations.test.sql` checks preference isolation and category ownership with pgTAP. Run it only against a disposable local database.
+# Copy generation with AI
+
+Apply `migrations/20260928000100_ai_copy_generation.sql` after the publication editor migration. It creates private per-user generation history, an atomic monthly limit of 30 attempts, and authenticated-only RPCs for reserving and finishing a generation. Apply the SQL in the Supabase SQL Editor, then run `tests/ai_copy_generation.test.sql` locally with `pnpm db:test`.
+
+The app calls the OpenAI Responses API only from a server action. Configure `OPENAI_API_KEY` as a private Vercel environment variable (never `NEXT_PUBLIC_*`); `OPENAI_MODEL` is optional and defaults to `gpt-4.1-mini`. No social network publishing is performed.

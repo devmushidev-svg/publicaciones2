@@ -45,10 +45,17 @@ export function DashboardOverview({ userName, overview, onNavigate, onCreatePubl
 
       <section className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="rounded-3xl bg-[#222824] p-6 text-white sm:p-8">
-          <div className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase text-[#adb9ac]"><Sparkles className="size-3.5 text-[#f5c86a]" />Tu espacio de trabajo</div>
-          <h2 className="max-w-lg font-serif text-3xl leading-tight sm:text-4xl">{overview.publications.length ? 'Tu contenido de hoy ya está en marcha.' : 'Dale forma a tu próxima publicación.'}</h2>
-          <p className="mt-4 max-w-md text-sm leading-6 text-[#b4bdb4]">{overview.publications.length ? `Tienes ${overview.publications.length} ${overview.publications.length === 1 ? 'publicación programada' : 'publicaciones programadas'} para hoy.` : 'Cuando programes contenido, aquí tendrás a la vista lo que toca publicar.'}</p>
-          <div className="mt-8 flex flex-wrap items-center gap-3"><span className="rounded-full border border-white/15 px-3 py-2 text-xs text-[#b4bdb4]">{overview.ideas.length} {overview.ideas.length === 1 ? 'idea pendiente' : 'ideas pendientes'}</span></div>
+          <div className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase text-[#adb9ac]"><Sparkles className="size-3.5 text-[#f5c86a]" />Recomendado para hoy</div>
+          {overview.recommendations.length ? <>
+            <h2 className="max-w-lg font-serif text-3xl leading-tight sm:text-4xl">{overview.recommendations[0].title}</h2>
+            <p className="mt-3 max-w-md text-sm leading-6 text-[#b4bdb4]">{overview.recommendations[0].reason}</p>
+            {overview.recommendations.length > 1 && <div className="mt-5 space-y-3 border-t border-white/15 pt-4">{overview.recommendations.slice(1).map((item, index) => <div key={item.id} className="flex items-start gap-3"><span className="mt-0.5 text-xs text-[#f5c86a]">0{index + 2}</span><div><p className="text-sm font-medium">{item.title}</p><p className="mt-1 text-xs text-[#b4bdb4]">{item.reason}</p></div></div>)}</div>}
+            <button onClick={() => onNavigate('Publicaciones')} className="mt-6 rounded-full bg-[#f5c86a] px-4 py-2.5 text-sm font-semibold text-[#222824] hover:bg-[#f8d889]">Abrir publicaciones</button>
+          </> : <>
+            <h2 className="max-w-lg font-serif text-3xl leading-tight sm:text-4xl">No hay contenido listo para recomendar.</h2>
+            <p className="mt-4 max-w-md text-sm leading-6 text-[#b4bdb4]">Crea un borrador o ajusta el descanso entre reutilizaciones en Configuración.</p>
+            <button onClick={onCreatePublication} className="mt-6 rounded-full bg-[#f5c86a] px-4 py-2.5 text-sm font-semibold text-[#222824] hover:bg-[#f8d889]">Crear publicación</button>
+          </>}
         </div>
         <div className="rounded-3xl border border-[#dedfd8] bg-[#fbfbf8] p-6 sm:p-7">
           <div className="flex items-center justify-between"><div><p className="text-sm text-[#7f877e]">Alcance de ayer</p><p className="mt-2 text-3xl font-semibold">{hasReachData ? numberFormat.format(overview.reachYesterday) : 'Sin datos'}</p></div><div className="flex size-11 items-center justify-center rounded-2xl bg-[#e2eee5] text-[#518060]"><TrendingUp className="size-5" /></div></div>
