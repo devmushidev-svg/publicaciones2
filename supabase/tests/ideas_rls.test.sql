@@ -25,13 +25,12 @@ select throws_ok(
   'users cannot create ideas for another account'
 );
 
+update public.ideas set status = 'archived'
+where id = '80000000-0000-4000-8000-000000000001';
+reset role;
 select is(
-  (with changed as (
-    update public.ideas set status = 'archived'
-    where id = '80000000-0000-4000-8000-000000000001'
-    returning id
-  ) select count(*)::integer from changed),
-  0,
+  (select status::text from public.ideas where id = '80000000-0000-4000-8000-000000000001'),
+  'inbox',
   'users cannot modify another account ideas'
 );
 

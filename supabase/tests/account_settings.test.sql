@@ -11,7 +11,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '90000000-0000-4000-8000-000000000001', true);
 
 select lives_ok(
-  $$ select public.update_my_settings('Settings Owner', 'America/New_York', 0, false) $$,
+  $$ select public.update_my_settings('Settings Owner'::text, 'America/New_York'::text, 0::smallint, false) $$,
   'an authenticated user can update their own settings'
 );
 

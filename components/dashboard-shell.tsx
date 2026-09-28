@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { DashboardOverview } from '@/components/dashboard/dashboard-overview'
 import { DashboardSidebar } from '@/components/dashboard/dashboard-sidebar'
@@ -18,6 +18,10 @@ import { DashboardSearch } from '@/components/dashboard/dashboard-search'
 import { DashboardTaxonomy, type CategoryOption, type TagOption } from '@/components/dashboard/dashboard-taxonomy'
 import { DashboardRecommendationSettings } from '@/components/dashboard/dashboard-recommendation-settings'
 import { DashboardAiCopy } from '@/components/dashboard/dashboard-ai-copy'
+import { ScheduleDialog } from '@/components/dashboard/dashboard-schedule-dialog'
+import type { CampaignRecord, HistoryLiteRecord, ScheduledPostRecord } from '@/lib/dashboard/schedule'
+import type { ActivityCategory } from '@/lib/insights/activity'
+import type { Opportunity } from '@/lib/insights/opportunities'
 
 type DashboardShellProps = {
   userName: string
@@ -32,6 +36,12 @@ type DashboardShellProps = {
   recommendationSettings: { postsPerDay: number; minimumRepeatDays: number; balanceWindowDays: number }
   categoryPreferences: Array<{ category_id: string; target_share: number | null; priority: number; is_enabled: boolean }>
   recommendationSettingsError: boolean
+  insightCategories: ActivityCategory[]
+  scheduledPosts: ScheduledPostRecord[]
+  campaigns: CampaignRecord[]
+  historyLite: HistoryLiteRecord[]
+  opportunities: Opportunity[]
+  scheduleError: boolean
   assets: MediaAssetRecord[]
   mediaError: boolean
   storageError: boolean
@@ -45,10 +55,13 @@ type DashboardShellProps = {
   settings: { email: string; fullName: string; timezone: string; weekStartsOn: number; emailDigest: boolean; hasError: boolean }
 }
 
-export function DashboardShell({ userName, overview, publications, history, publicationsError, historyError, categories, tags, taxonomyError, recommendationSettings, categoryPreferences, recommendationSettingsError, assets, mediaError, storageError, ideas, ideasError, aiMonthlyUsage, metrics, metricsError, connections, connectionsError, settings }: DashboardShellProps) {
+export function DashboardShell({ userName, overview, publications, history, publicationsError, historyError, categories, tags, taxonomyError, recommendationSettings, categoryPreferences, recommendationSettingsError, insightCategories, scheduledPosts, campaigns, historyLite, opportunities, scheduleError, assets, mediaError, storageError, ideas, ideasError, aiMonthlyUsage, metrics, metricsError, connections, connectionsError, settings }: DashboardShellProps) {
   const [active, setActive] = useState('Inicio')
   const [searchTarget, setSearchTarget] = useState<{ section: string; query: string } | null>(null)
   const [homePublicationOpen, setHomePublicationOpen] = useState(false)
+  const [scheduleRequest, setScheduleRequest] = useState<{ publicationId?: string; campaignId?: string } | null>(null)
+  const openSchedule = useCallback((publicationId?: string, campaignId?: string) => setScheduleRequest({ publicationId, campaignId }), [])
+  const closeSchedule = useCallback(() => setScheduleRequest(null), [])
   const [searchOpen, setSearchOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const mobileSidebarRef = useRef<HTMLDialogElement>(null)
@@ -100,22 +113,23 @@ export function DashboardShell({ userName, overview, publications, history, publ
         {active === 'Biblioteca'
           ? <DashboardLibrary key={`library-${activeSearch}`} assets={assets} publications={publications} categories={categories} tags={tags} timezone={settings.timezone} publicationsError={publicationsError} mediaError={mediaError} storageError={storageError} initialSearch={activeSearch} />
           : active === 'Calendario'
-          ? <DashboardCalendar publications={publications} categories={categories} tags={tags} assets={assets} weekStartsOn={settings.weekStartsOn} timezone={settings.timezone} />
+          ? <DashboardCalendar publications={publications} scheduledPosts={scheduledPosts} campaigns={campaigns} history={historyLite} categories={categories} tags={tags} assets={assets} minimumRepeatDays={recommendationSettings.minimumRepeatDays} hasError={scheduleError} weekStartsOn={settings.weekStartsOn} timezone={settings.timezone} />
             : active === 'Ideas'
-              ? <DashboardIdeas key={`ideas-${activeSearch}`} ideas={ideas} hasError={ideasError} initialSearch={activeSearch} />
+              ? <DashboardIdeas key={`ideas-${activeSearch}`} ideas={ideas} hasError={ideasError} initialSearch={activeSearch} opportunities={opportunities} campaigns={campaigns} publications={publications} onSchedule={openSchedule} onNavigate={navigateToSection} />
               : active === 'Crear con IA'
                 ? <DashboardAiCopy initialUsed={aiMonthlyUsage} />
               : active === 'Rendimiento'
-                ? <DashboardPerformance metrics={metrics} publications={publications} hasError={metricsError} />
+                ? <DashboardPerformance metrics={metrics} publications={publications} hasError={metricsError} history={historyLite} scheduledPosts={scheduledPosts} categories={insightCategories} postsPerDay={recommendationSettings.postsPerDay} timezone={settings.timezone} activityError={scheduleError} />
                 : active === 'Conexiones'
                   ? <DashboardConnections connections={connections} hasError={connectionsError} />
                   : active === 'Configuración'
                     ? <><DashboardSettings {...settings} /><DashboardRecommendationSettings categories={categories} settings={recommendationSettings} preferences={categoryPreferences} hasError={recommendationSettingsError} /><DashboardTaxonomy categories={categories} tags={tags} hasError={taxonomyError} /></>
                     : active === 'Publicaciones'
-                      ? <DashboardPublications key={`publications-${activeSearch}`} publications={publications} history={history} hasError={publicationsError} historyError={historyError} timezone={settings.timezone} categories={categories} tags={tags} assets={assets} initialSearch={activeSearch} />
-                      : <DashboardOverview userName={userName} overview={overview} onNavigate={(section) => navigateToSection(section)} onCreatePublication={() => setHomePublicationOpen(true)} />}
+                      ? <DashboardPublications key={`publications-${activeSearch}`} publications={publications} history={history} hasError={publicationsError} historyError={historyError} timezone={settings.timezone} categories={categories} tags={tags} assets={assets} initialSearch={activeSearch} scheduledPosts={scheduledPosts} onSchedule={openSchedule} />
+                      : <DashboardOverview userName={userName} overview={overview} opportunityCount={opportunities.length} onNavigate={(section) => navigateToSection(section)} onCreatePublication={() => setHomePublicationOpen(true)} onSchedule={openSchedule} />}
       </main>
       {homePublicationOpen && <PublicationDialog publication={null} onClose={() => setHomePublicationOpen(false)} timezone={settings.timezone} categories={categories} tags={tags} assets={assets} />}
+      {scheduleRequest && <ScheduleDialog publications={publications} campaigns={campaigns} slots={scheduledPosts} history={historyLite} timezone={settings.timezone} minimumRepeatDays={recommendationSettings.minimumRepeatDays} onClose={closeSchedule} initialPublicationId={scheduleRequest.publicationId} initialCampaignId={scheduleRequest.campaignId} />}
       <DashboardSearch open={searchOpen} onClose={() => setSearchOpen(false)} onNavigate={navigateToSection} publications={publications} ideas={ideas} assets={assets} />
     </div>
   )

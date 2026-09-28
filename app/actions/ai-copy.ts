@@ -2,12 +2,14 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { extractResponseText, parseCopyVariants, type CopyVariant } from '@/lib/ai/copy'
+import type { CopyVariant } from '@/lib/ai/copy'
+import { requestCopyVariants } from '@/lib/ai/provider'
 
 export type AiCopyState = { error?: string; success?: string; variants?: CopyVariant[]; generationId?: string; used?: number; limit?: number }
 
 const allowedPlatforms = new Set(['instagram', 'facebook', 'linkedin', 'tiktok', 'x', 'whatsapp'])
 const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini'
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function errorMessage(code: string) {
   if (code === 'insufficient_quota') return 'Se agotó el crédito disponible del proveedor de IA.'
@@ -44,65 +46,11 @@ export async function generateAiCopy(_previous: AiCopyState, formData: FormData)
   const generationId = reserved?.generation_id as string | undefined
   if (!generationId) return { error: errorMessage('database') }
 
-  let variants: CopyVariant[] | null = null
-  let failureCode = 'provider'
-  let inputTokens = 0
-  let outputTokens = 0
-  try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(45_000),
-      body: JSON.stringify({
-        model,
-        store: false,
-        max_output_tokens: 1800,
-        instructions: 'Eres estratega de contenido para redes sociales en español. Escribe en español natural, respeta estrictamente los datos del brief, no inventes cifras, testimonios, promociones ni afirmaciones verificables. Produce tres enfoques realmente distintos. El contenido es un borrador para revisión humana, nunca afirmes que fue publicado.',
-        input: `Brief del usuario:\n${brief}\n\nPlataformas objetivo: ${platforms.join(', ')}. Adapta la longitud y el tono a estas plataformas. Devuelve exactamente tres variantes.`,
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'social_copy_variants',
-            strict: true,
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                variants: {
-                  type: 'array', minItems: 3, maxItems: 3,
-                  items: {
-                    type: 'object', additionalProperties: false,
-                    properties: {
-                      angle: { type: 'string' }, headline: { type: 'string' }, body: { type: 'string' }, callToAction: { type: 'string' },
-                    }, required: ['angle', 'headline', 'body', 'callToAction'],
-                  },
-                },
-              }, required: ['variants'],
-            },
-          },
-        },
-      }),
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({})) as { error?: { code?: string; type?: string } }
-      failureCode = response.status === 429 ? (body.error?.code === 'insufficient_quota' ? 'insufficient_quota' : 'rate_limit') : 'provider'
-      throw new Error(failureCode)
-    }
-    const payload = await response.json() as { usage?: { input_tokens?: number; output_tokens?: number } }
-    inputTokens = payload.usage?.input_tokens ?? 0
-    outputTokens = payload.usage?.output_tokens ?? 0
-    let parsed: { variants?: unknown }
-    try {
-      parsed = JSON.parse(extractResponseText(payload)) as { variants?: unknown }
-    } catch {
-      failureCode = 'invalid_output'
-      throw new Error('invalid_output')
-    }
-    variants = parseCopyVariants(parsed.variants)
-  } catch (error) {
-    if (error instanceof Error && error.name === 'TimeoutError') failureCode = 'timeout'
-    else if (error instanceof Error && ['invalid_output', 'insufficient_quota', 'rate_limit'].includes(error.message)) failureCode = error.message
-  }
+  const result = await requestCopyVariants({ apiKey: process.env.OPENAI_API_KEY, model, brief, platforms })
+  const variants: CopyVariant[] | null = result.ok ? result.variants : null
+  const failureCode = result.ok ? '' : result.failureCode
+  const inputTokens = result.inputTokens
+  const outputTokens = result.outputTokens
 
   const { error: finishError } = await supabase.rpc('finish_my_ai_copy_generation', {
     p_generation_id: generationId,
@@ -127,14 +75,13 @@ export async function saveGeneratedCopyAsDraft(_previous: AiCopyState, formData:
   const generationId = String(formData.get('generation_id') ?? '')
   if (!title || title.length > 200 || !body || body.length > 3000) return { error: 'Revisa el título y el texto del borrador.' }
 
-  const { data: publicationId, error: saveError } = await supabase.rpc('save_my_publication', {
-    p_id: null, p_title: title, p_body: body, p_category_id: null, p_status: 'draft',
-    p_scheduled_for: null, p_published_at: null, p_platforms: [], p_media_ids: [], p_tag_ids: [],
-  })
-  if (saveError) return { error: 'No se pudo guardar el borrador. Comprueba que la migración de biblioteca esté aplicada.' }
-  if (generationId) {
-    const { error } = await supabase.rpc('mark_my_ai_copy_saved', { p_generation_id: generationId, p_publication_id: publicationId })
-    if (error) return { success: 'El borrador se guardó. No se pudo actualizar su registro de revisión.' }
+  if (!uuidPattern.test(generationId)) return { error: 'No encontramos esa generación. Genera las propuestas de nuevo.' }
+
+  const { error } = await supabase.rpc('save_my_ai_copy_draft', { p_generation_id: generationId, p_title: title, p_body: body })
+  if (error) {
+    if (error.code === 'P0002') return { error: 'No encontramos esa generación. Genera las propuestas de nuevo.' }
+    if (error.code === '22023') return { error: 'Revisa el título y el texto del borrador.' }
+    return { error: 'No se pudo guardar el borrador. Comprueba que la migración de IA esté aplicada.' }
   }
   revalidatePath('/')
   return { success: 'Borrador guardado. Ya aparece en Publicaciones.' }

@@ -22,6 +22,7 @@ export async function markPublicationUsed(
   if (!user) return { error: 'Tu sesión venció. Inicia sesión nuevamente.' }
 
   const publicationId = field(formData, 'publication_id')
+  const scheduledPostId = field(formData, 'scheduled_post_id')
   const idempotencyKey = field(formData, 'idempotency_key')
   const localDate = field(formData, 'published_at')
   const timezone = field(formData, 'timezone') || 'America/Tegucigalpa'
@@ -29,7 +30,7 @@ export async function markPublicationUsed(
   const notes = String(formData.get('notes') ?? '').trim()
   const platforms = [...new Set(formData.getAll('platforms').map(String))]
 
-  if (!uuidPattern.test(publicationId) || !uuidPattern.test(idempotencyKey)) {
+  if (!uuidPattern.test(publicationId) || !uuidPattern.test(idempotencyKey) || (scheduledPostId && !uuidPattern.test(scheduledPostId))) {
     return { error: 'No pudimos validar esta publicación. Cierra e intenta de nuevo.' }
   }
   if (!platforms.length || platforms.some((platform) => !allowedPlatforms.has(platform))) {
@@ -43,17 +44,14 @@ export async function markPublicationUsed(
     return { error: 'La fecha de publicación no puede estar en el futuro.' }
   }
 
-  const { error } = await supabase.rpc('record_my_publication_use', {
-    p_publication_id: publicationId,
-    p_idempotency_key: idempotencyKey,
-    p_platforms: platforms,
-    p_published_at: publishedAt,
-    p_copy: copy,
-    p_notes: notes,
-  })
+  const common = { p_idempotency_key: idempotencyKey, p_platforms: platforms, p_published_at: publishedAt, p_copy: copy, p_notes: notes }
+  const { error } = scheduledPostId
+    ? await supabase.rpc('record_my_scheduled_post_use', { p_id: scheduledPostId, ...common })
+    : await supabase.rpc('record_my_publication_use', { p_publication_id: publicationId, ...common })
 
   if (error) {
     if (error.code === 'P0002') return { error: 'No encontramos esa publicación activa.' }
+    if (error.code === '55000') return { error: 'Esta programación está cancelada o ya tiene un uso registrado.' }
     if (error.code === '22023') return { error: 'Los datos cambiaron. Cierra y vuelve a registrar el uso.' }
     return { error: 'No se pudo guardar el historial. Revisa que la migración del historial esté aplicada.' }
   }

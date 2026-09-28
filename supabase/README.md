@@ -38,3 +38,20 @@ Run `migrations/20260925000800_recommendations.sql` after categories and publica
 Apply `migrations/20260928000100_ai_copy_generation.sql` after the publication editor migration. It creates private per-user generation history, an atomic monthly limit of 30 attempts, and authenticated-only RPCs for reserving and finishing a generation. Apply the SQL in the Supabase SQL Editor, then run `tests/ai_copy_generation.test.sql` locally with `pnpm db:test`.
 
 The app calls the OpenAI Responses API only from a server action. Configure `OPENAI_API_KEY` as a private Vercel environment variable (never `NEXT_PUBLIC_*`); `OPENAI_MODEL` is optional and defaults to `gpt-4.1-mini`. No social network publishing is performed.
+
+## Phase 7 hardening, calendar, campaigns, and ideas (20260928000200 – 20260928000400)
+
+Apply in order, after `20260928000100_ai_copy_generation.sql`:
+
+1. `20260928000200_ai_copy_draft.sql` — `save_my_ai_copy_draft` creates the reviewed draft and links it to the generation in one transaction (retries return the same draft). Reservations accept the six platforms offered by the UI and close attempts left in `generating` for more than 10 minutes.
+2. `20260928000300_schedule_and_campaigns.sql` — `campaigns` and `scheduled_posts` (read-only to owners; writes through `schedule_my_publication`, `reschedule_my_post`, `cancel_my_scheduled_post`, `record_my_scheduled_post_use`, `save_my_campaign`, `set_my_campaign_archived`). Existing `publications.status = 'scheduled'` rows become planned slots and the publications return to `draft`. `save_my_publication` stops accepting `scheduled`; deploy the matching app code right after applying it.
+3. `20260928000400_ideas_opportunities.sql` — ideas gain `campaign_id`, `publication_id` and `source_key`; `convert_my_idea_to_draft` and `save_my_opportunity_idea` are atomic and idempotent.
+
+A scheduled post is an intention. Only `publication_history` records real use, and a slot becomes `fulfilled` only through `record_my_scheduled_post_use`. Campaign dates and the one-slot-per-day rule use the account timezone from `account_preferences`.
+
+Before applying to the remote project, run `verify_remote_state.sql` in the SQL Editor. It is read-only and reports, per migration, whether its objects exist and whether its version is registered in `supabase_migrations.schema_migrations`. Do not insert versions by hand to make them match.
+
+## Tests
+
+- `pnpm db:test` runs every pgTAP file in `tests/` against the local stack.
+- `pnpm test:integration` signs up real users against the local Auth + PostgREST and checks phases 5–9 end to end (users A and B, anonymous, retries, duplicates, time zones). It needs `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from `supabase status` and must never point at production.

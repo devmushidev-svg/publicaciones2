@@ -1,14 +1,78 @@
 'use client'
 
-import { useState } from 'react'
-import { BarChart3, MousePointerClick, UsersRound, Eye, Heart } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { BarChart3, CalendarCheck2, MousePointerClick, UsersRound, Eye, Heart } from 'lucide-react'
 import type { PublicationRecord } from '@/lib/dashboard/publications'
+import type { HistoryLiteRecord, ScheduledPostRecord } from '@/lib/dashboard/schedule'
+import { summarizeActivity, type ActivityCategory } from '@/lib/insights/activity'
 
 export type MetricRecord = { id: string; publication_id: string | null; platform: string; measured_on: string; reach: number; impressions: number; engagements: number; clicks: number }
 const platformNames: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', tiktok: 'TikTok', x: 'X' }
 const periods = [7, 30, 90] as const
 
-export function DashboardPerformance({ metrics, publications, hasError }: { metrics: MetricRecord[]; publications: PublicationRecord[]; hasError: boolean }) {
+const weekdayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+type PerformanceProps = {
+  metrics: MetricRecord[]
+  publications: PublicationRecord[]
+  hasError: boolean
+  history: HistoryLiteRecord[]
+  scheduledPosts: ScheduledPostRecord[]
+  categories: ActivityCategory[]
+  postsPerDay: number
+  timezone: string
+  activityError: boolean
+}
+
+function ActivitySection({ period, history, scheduledPosts, publications, categories, postsPerDay, timezone, hasError }: { period: number; history: HistoryLiteRecord[]; scheduledPosts: ScheduledPostRecord[]; publications: PublicationRecord[]; categories: ActivityCategory[]; postsPerDay: number; timezone: string; hasError: boolean }) {
+  const summary = useMemo(() => summarizeActivity({ history, slots: scheduledPosts, publications, categories, postsPerDay, timezone, periodDays: period }), [categories, history, period, postsPerDay, publications, scheduledPosts, timezone])
+  const maxDay = Math.max(postsPerDay, ...summary.perDay.map((item) => item.occasions))
+  const maxWeekday = Math.max(1, ...summary.byWeekday)
+  const busiestHours = summary.byHour.map((count, hour) => ({ hour, count })).filter((item) => item.count > 0).sort((a, b) => b.count - a.count || a.hour - b.hour).slice(0, 3)
+  const platformNamesMap: Record<string, string> = platformNames
+  const stats = [
+    { label: 'Ocasiones registradas', value: String(summary.occasions), hint: `${summary.platformPosts} por plataforma` },
+    { label: 'Promedio diario', value: summary.averagePerDay > 0 && summary.averagePerDay < 0.1 ? '< 0.1' : summary.averagePerDay.toFixed(1), hint: `objetivo ${postsPerDay}` },
+    { label: 'Días en objetivo', value: `${summary.daysMeetingTarget}/${period}`, hint: `${summary.activeDays} días con actividad` },
+    { label: 'Programación cumplida', value: summary.plan.due ? `${Math.round(summary.plan.fulfilled / summary.plan.due * 100)}%` : '—', hint: summary.plan.due ? `${summary.plan.fulfilled} de ${summary.plan.due} · ${summary.plan.pending} pendientes` : 'sin programaciones vencidas' },
+  ]
+
+  return <section aria-labelledby="activity-heading" className="mb-12">
+    <div className="mb-2 flex items-center gap-2"><CalendarCheck2 className="size-4 text-[#74816f]" /><h2 id="activity-heading" className="font-serif text-2xl">Actividad real</h2></div>
+    <p className="mb-4 text-xs text-[#858c84]">Basada en tu historial de usos registrados y tu calendario interno ({summary.startKey} a {summary.endKey}, {timezone}). No son métricas de redes sociales.</p>
+    {hasError && <p role="status" className="mb-4 rounded-md border border-[#e7c8a2] bg-[#fff8ea] px-4 py-3 text-sm text-[#765c2c]">No se pudo cargar todo el historial o la programación.</p>}
+    {summary.occasions || summary.plan.due ? <>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{stats.map((item) => <article key={item.label} className="border-b border-[#dedfd8] bg-[#fbfbf8] p-4"><p className="text-xs text-[#7f877e]">{item.label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{item.value}</p><p className="mt-1 text-[11px] text-[#929990]">{item.hint}</p></article>)}</div>
+      <div className="mt-8 grid gap-8 xl:grid-cols-[1.3fr_0.7fr]">
+        <section>
+          <h3 className="mb-3 text-sm font-semibold">Ocasiones por día</h3>
+          <div className="relative flex h-40 items-end gap-1 border-b border-[#dedfd8] px-1 sm:gap-1.5">
+            <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[#c18d32]/60" style={{ bottom: `${postsPerDay / maxDay * 100}%` }} aria-hidden="true" />
+            {summary.perDay.map((item) => <div key={item.date} title={`${item.date}: ${item.occasions}`} className="flex h-full min-w-0 flex-1 flex-col justify-end"><div className={`rounded-t-sm ${item.occasions >= postsPerDay ? 'bg-[#6e9d79]' : item.occasions ? 'bg-[#a9c4ae]' : 'bg-[#e5e9e2]'}`} style={{ height: `${Math.max(3, item.occasions / maxDay * 100)}%` }} /></div>)}
+          </div>
+          <div className="mt-2 flex justify-between text-[10px] text-[#929990]"><span>{summary.perDay[0]?.date}</span><span>Línea: objetivo diario</span><span>{summary.perDay.at(-1)?.date}</span></div>
+          <h3 className="mb-3 mt-8 text-sm font-semibold">Equilibrio por categoría</h3>
+          {summary.byCategory.length ? <div className="space-y-3">{summary.byCategory.map((item) => <div key={item.id ?? 'none'}>
+            <div className="flex justify-between gap-3 text-xs"><span className="flex items-center gap-2 font-medium"><span className="size-2.5 rounded-full" style={{ backgroundColor: item.color ?? '#b9beb6' }} />{item.name}</span><span className="tabular-nums text-[#687168]">{item.occasions} · {Math.round(item.share * 100)}%{item.targetShare !== null ? ` / objetivo ${Math.round(item.targetShare * 100)}%` : ''}</span></div>
+            <div className="relative mt-1.5 h-1.5 rounded-full bg-[#e5e9e2]"><div className="h-full rounded-full" style={{ width: `${item.share * 100}%`, backgroundColor: item.color ?? '#9aa198' }} />{item.targetShare !== null && <span className="absolute -top-1 h-3.5 w-0.5 bg-[#222824]" style={{ left: `${Math.min(100, item.targetShare * 100)}%` }} aria-hidden="true" />}</div>
+          </div>)}</div> : <p className="text-sm text-[#858c84]">Sin categorías con usos.</p>}
+        </section>
+        <section>
+          <h3 className="mb-3 text-sm font-semibold">Por plataforma</h3>
+          {summary.byPlatform.length ? <div className="divide-y divide-[#e3e4de]">{summary.byPlatform.map((item) => <div key={item.platform} className="flex justify-between py-2 text-sm"><span>{platformNamesMap[item.platform] ?? item.platform}</span><span className="tabular-nums text-[#596258]">{item.count}</span></div>)}</div> : <p className="text-sm text-[#858c84]">Sin usos en este período.</p>}
+          <h3 className="mb-3 mt-6 text-sm font-semibold">Días de la semana</h3>
+          <div className="flex h-20 items-end gap-1.5">{summary.byWeekday.map((count, index) => <div key={weekdayNames[index]} className="flex h-full flex-1 flex-col justify-end text-center" title={`${weekdayNames[index]}: ${count}`}><div className="rounded-t-sm bg-[#8aa6c0]" style={{ height: `${Math.max(3, count / maxWeekday * 100)}%` }} /><span className="mt-1 text-[10px] text-[#929990]">{weekdayNames[index]}</span></div>)}</div>
+          <p className="mt-4 text-xs text-[#687168]">{busiestHours.length ? `Horas más usadas: ${busiestHours.map((item) => `${String(item.hour).padStart(2, '0')}:00 (${item.count})`).join(', ')}` : 'Sin horas registradas.'}</p>
+          <h3 className="mb-2 mt-6 text-sm font-semibold">Más reutilizadas</h3>
+          {summary.topPublications.length ? <ol className="space-y-1.5 text-sm">{summary.topPublications.map((item) => <li key={item.publicationId} className="flex justify-between gap-3"><span className="truncate">{item.title}</span><span className="shrink-0 tabular-nums text-[#596258]">{item.occasions}×</span></li>)}</ol> : <p className="text-sm text-[#858c84]">—</p>}
+          <p className="mt-6 text-xs text-[#687168]">Calendario: {summary.plan.fulfilled} cumplidas ({summary.plan.fulfilledSameDay} el mismo día), {summary.plan.cancelled} canceladas, {summary.plan.pending} pendientes de confirmar, {summary.plan.upcoming} por delante.</p>
+        </section>
+      </div>
+    </> : <p className="border-y border-[#e3e4de] py-8 text-center text-sm text-[#858c84]">Aún no hay usos registrados en este período. Marca publicaciones como publicadas para ver tu actividad real.</p>}
+  </section>
+}
+
+export function DashboardPerformance({ metrics, publications, hasError, history, scheduledPosts, categories, postsPerDay, timezone, activityError }: PerformanceProps) {
   const [period, setPeriod] = useState<(typeof periods)[number]>(30)
   const start = new Date()
   start.setDate(start.getDate() - period + 1)
@@ -45,7 +109,9 @@ export function DashboardPerformance({ metrics, publications, hasError }: { metr
   ]
 
   return <section className="mx-auto max-w-[1400px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
-    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-semibold uppercase text-[#74816f]">Espacio de trabajo</p><h1 className="mt-2 font-serif text-3xl sm:text-4xl">Rendimiento</h1><p className="mt-2 text-sm text-[#747b72]">Resultados registrados para tus publicaciones.</p></div><div className="flex rounded-md border border-[#d7dad2] p-1" role="group" aria-label="Período de métricas">{periods.map((value) => <button key={value} aria-pressed={period === value} onClick={() => setPeriod(value)} className={`rounded px-3 py-1.5 text-xs font-medium ${period === value ? 'bg-[#222824] text-white' : 'text-[#687168] hover:bg-[#eef0eb]'}`}>{value} días</button>)}</div></div>
+    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-semibold uppercase text-[#74816f]">Espacio de trabajo</p><h1 className="mt-2 font-serif text-3xl sm:text-4xl">Rendimiento</h1><p className="mt-2 text-sm text-[#747b72]">Tu actividad real y los resultados registrados de tus redes.</p></div><div className="flex rounded-md border border-[#d7dad2] p-1" role="group" aria-label="Período de métricas">{periods.map((value) => <button key={value} aria-pressed={period === value} onClick={() => setPeriod(value)} className={`rounded px-3 py-1.5 text-xs font-medium ${period === value ? 'bg-[#222824] text-white' : 'text-[#687168] hover:bg-[#eef0eb]'}`}>{value} días</button>)}</div></div>
+    <ActivitySection period={period} history={history} scheduledPosts={scheduledPosts} publications={publications} categories={categories} postsPerDay={postsPerDay} timezone={timezone} hasError={activityError} />
+    <div className="mb-4 flex items-center gap-2 border-t border-[#dedfd8] pt-8"><BarChart3 className="size-4 text-[#74816f]" /><h2 className="font-serif text-2xl">Métricas de redes</h2></div>
     {hasError && <p role="status" className="mb-5 rounded-md border border-[#e7c8a2] bg-[#fff8ea] px-4 py-3 text-sm text-[#765c2c]">No se pudieron cargar todas las métricas.</p>}
     {rows.length ? <>
       <p className="mb-4 text-xs text-[#858c84]">Totales de {period} días; se suman las mediciones guardadas en ese período.</p>

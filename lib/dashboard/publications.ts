@@ -43,6 +43,7 @@ export const publicationHistoryPageSize = 50
 export type PublicationActionState = {
   error?: string
   success?: string
+  publicationId?: string
 }
 
 export const publicationPlatforms = [

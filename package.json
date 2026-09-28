@@ -12,7 +12,8 @@
     "db:start": "supabase start",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
-    "start": "next start"
+    "start": "next start",
+    "test:integration": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/integration/*.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

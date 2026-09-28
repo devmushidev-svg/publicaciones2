@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { Check, FileImage, History, Search, X } from 'lucide-react'
 import { loadMorePublicationHistory, markPublicationUsed } from '@/app/actions/publication-history'
 import { dateKeyInTimezone, dateTimeInputValue } from '@/lib/date-time'
@@ -13,19 +13,23 @@ import {
   type PublicationRecord,
   publicationHistoryPageSize,
 } from '@/lib/dashboard/publications'
+import type { ScheduledPostRecord } from '@/lib/dashboard/schedule'
 
 type MarkPublishedDialogProps = {
   publication: PublicationRecord
   timezone: string
   idempotencyKey: string
   onClose: () => void
+  slot?: ScheduledPostRecord | null
 }
 
-function MarkPublishedDialog({ publication, timezone, idempotencyKey, onClose }: MarkPublishedDialogProps) {
+function MarkPublishedDialog({ publication, timezone, idempotencyKey, onClose, slot = null }: MarkPublishedDialogProps) {
   const router = useRouter()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [state, formAction, pending] = useActionState<PublicationActionState, FormData>(markPublicationUsed, {})
-  const [publishedAt, setPublishedAt] = useState(() => dateTimeInputValue(new Date().toISOString(), timezone))
+  // A slot that already passed defaults to its planned time; the user confirms the real one.
+  const [publishedAt, setPublishedAt] = useState(() => dateTimeInputValue(slot && Date.parse(slot.planned_for) < Date.now() ? slot.planned_for : new Date().toISOString(), timezone))
+  const defaultPlatforms = slot?.platforms.length ? slot.platforms : publication.platforms
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -53,12 +57,14 @@ function MarkPublishedDialog({ publication, timezone, idempotencyKey, onClose }:
           <h2 id={`publication-use-title-${publication.id}`} className="mt-1 font-serif text-2xl">Registrar uso</h2>
           <p className="mt-1 text-sm text-[#747b72]">{publication.title}</p>
           <p className="mt-1 text-xs text-[#838a81]">Registra una publicación que ya realizaste; no la envía a ninguna red.</p>
+          {slot && <p className="mt-1 text-xs text-[#48627b]">Completa la programación del {new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone }).format(new Date(slot.planned_for))}.</p>}
         </div>
         <button type="button" aria-label="Cerrar" onClick={() => dialogRef.current?.close()} className="rounded-md p-2 text-[#737b72] hover:bg-[#e8ebe3]"><X className="size-4" /></button>
       </div>
 
       {state.error && <p role="alert" className="mb-4 rounded-md border border-[#e7bdb0] bg-[#fff5f1] px-3 py-2.5 text-sm text-[#8c3e2f]">{state.error}</p>}
       <input type="hidden" name="publication_id" value={publication.id} />
+      {slot && <input type="hidden" name="scheduled_post_id" value={slot.id} />}
       <input type="hidden" name="idempotency_key" value={idempotencyKey} />
       <input type="hidden" name="timezone" value={timezone} />
 
@@ -70,7 +76,7 @@ function MarkPublishedDialog({ publication, timezone, idempotencyKey, onClose }:
         <legend className="text-sm font-medium">Plataformas donde se publicó</legend>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
           {publicationPlatforms.map(({ value, label }) => <label key={value} className="flex items-center gap-2 text-sm text-[#555d55]">
-            <input type="checkbox" name="platforms" value={value} defaultChecked={publication.platforms.includes(value)} className="size-4 accent-[#526e58]" />{label}
+            <input type="checkbox" name="platforms" value={value} defaultChecked={defaultPlatforms.includes(value)} className="size-4 accent-[#526e58]" />{label}
           </label>)}
         </div>
       </fieldset>
@@ -90,14 +96,14 @@ function MarkPublishedDialog({ publication, timezone, idempotencyKey, onClose }:
   </dialog>
 }
 
-export function MarkPublishedButton({ publication, timezone }: { publication: PublicationRecord; timezone: string }) {
+export function MarkPublishedButton({ publication, timezone, slot = null, label, className }: { publication: PublicationRecord; timezone: string; slot?: ScheduledPostRecord | null; label?: string; className?: string }) {
   const [idempotencyKey, setIdempotencyKey] = useState('')
-  const close = () => setIdempotencyKey('')
+  const close = useCallback(() => setIdempotencyKey(''), [])
   return <>
-    <button type="button" onClick={() => setIdempotencyKey(crypto.randomUUID())} className="flex h-9 items-center gap-2 rounded-md border border-[#cdd1c8] px-3 text-xs font-medium text-[#465347] hover:bg-[#e8ebe3]">
-      <Check className="size-3.5" />{publication.status === 'published' ? 'Registrar reutilización' : 'Marcar publicada'}
+    <button type="button" onClick={() => setIdempotencyKey(crypto.randomUUID())} className={className ?? 'flex h-9 items-center gap-2 rounded-md border border-[#cdd1c8] px-3 text-xs font-medium text-[#465347] hover:bg-[#e8ebe3]'}>
+      <Check className="size-3.5" />{label ?? (publication.status === 'published' ? 'Registrar reutilización' : 'Marcar publicada')}
     </button>
-    {idempotencyKey && <MarkPublishedDialog key={idempotencyKey} publication={publication} timezone={timezone} idempotencyKey={idempotencyKey} onClose={close} />}
+    {idempotencyKey && <MarkPublishedDialog key={idempotencyKey} publication={publication} timezone={timezone} idempotencyKey={idempotencyKey} onClose={close} slot={slot} />}
   </>
 }
 

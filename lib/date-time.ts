@@ -67,3 +67,25 @@ export function yearMonthInTimezone(date: Date, timeZone: string) {
   const { year, month } = partsOf(date, timeZone)
   return { year, month }
 }
+
+export function addDaysToKey(key: string, amount: number) {
+  const [year, month, day] = key.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day + amount))
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+export function daysBetweenKeys(from: string, to: string) {
+  const [fromYear, fromMonth, fromDay] = from.split('-').map(Number)
+  const [toYear, toMonth, toDay] = to.split('-').map(Number)
+  return Math.round((Date.UTC(toYear, toMonth - 1, toDay) - Date.UTC(fromYear, fromMonth - 1, fromDay)) / 86_400_000)
+}
+
+/** 0 = Sunday … 6 = Saturday, for a YYYY-MM-DD calendar key. */
+export function weekdayOfKey(key: string) {
+  const [year, month, day] = key.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+}
+
+export function hourInTimezone(date: Date, timeZone: string) {
+  return partsOf(date, timeZone).hour
+}

@@ -38,3 +38,11 @@ test('favors newer eligible drafts when category signals are otherwise equal', (
   ]
   assert.equal(recommendDailyContent(input, [], { ...settings, postsPerDay: 1 }, now)[0].id, 'new')
 })
+
+test('skips content already planned inside the rest period', () => {
+  const input = [
+    candidate({ id: 'planned-soon', categoryId: 'b', nextPlannedAt: '2026-09-28T15:00:00.000Z' }),
+    candidate({ id: 'planned-later', categoryId: 'b', nextPlannedAt: '2026-11-30T15:00:00.000Z' }),
+  ]
+  assert.deepEqual(recommendDailyContent(input, categories, settings, now).map(({ id }) => id), ['planned-later'])
+})

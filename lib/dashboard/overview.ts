@@ -5,10 +5,12 @@ import { recommendDailyContent, type DailyRecommendation, type RecommendationCat
 
 export type OverviewPublication = {
   id: string
+  publicationId: string
   title: string
   category: string | null
   scheduled_for: string | null
   platforms: string[]
+  status: 'planned' | 'fulfilled'
 }
 
 export type OverviewIdea = { id: string; title: string }
@@ -19,6 +21,8 @@ export type OverviewData = {
   publications: OverviewPublication[]
   ideas: OverviewIdea[]
   recommendations: DailyRecommendation[]
+  postsPerDay: number
+  usedToday: number
   chart: number[]
   reachYesterday: number
   reachChange: number | null
@@ -92,13 +96,13 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
 
   const [publicationsResult, ideasResult, metricsResult, settingsResult, categoryResult, categoryPreferenceResult, candidateResult, tagResult, historyResult, scheduledResult] = await Promise.all([
     supabase
-      .from('publications')
-      .select('id,title,category_id,categories(name),scheduled_for,platforms')
+      .from('scheduled_posts')
+      .select('id,publication_id,planned_for,platforms,status,publications(title,categories(name))')
       .eq('user_id', userId)
-      .eq('status', 'scheduled')
-      .gte('scheduled_for', todayStartUtc)
-      .lt('scheduled_for', tomorrowStartUtc)
-      .order('scheduled_for', { ascending: true }),
+      .in('status', ['planned', 'fulfilled'])
+      .gte('planned_for', todayStartUtc)
+      .lt('planned_for', tomorrowStartUtc)
+      .order('planned_for', { ascending: true }),
     supabase
       .from('ideas')
       .select('id,title')
@@ -118,8 +122,8 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
     supabase.from('category_preferences').select('category_id,target_share,priority,is_enabled').eq('user_id', userId),
     supabase.from('publications').select('id,title,category_id,created_at').eq('user_id', userId).in('status', ['draft', 'published']).order('created_at', { ascending: false }).limit(1000),
     supabase.from('publication_tags').select('publication_id,tag_id').eq('user_id', userId),
-    supabase.from('publication_history').select('publication_id,published_at,category_snapshot').eq('user_id', userId).gte('published_at', new Date(Date.now() - 365 * 86_400_000).toISOString()).order('published_at', { ascending: false }).limit(5000),
-    supabase.from('publications').select('id').eq('user_id', userId).eq('status', 'scheduled').gte('scheduled_for', todayStartUtc).lt('scheduled_for', tomorrowStartUtc),
+    supabase.from('publication_history').select('idempotency_key,publication_id,published_at,category_snapshot').eq('user_id', userId).gte('published_at', new Date(Date.now() - 365 * 86_400_000).toISOString()).order('published_at', { ascending: false }).limit(5000),
+    supabase.from('scheduled_posts').select('publication_id,planned_for').eq('user_id', userId).eq('status', 'planned').gte('planned_for', todayStartUtc).order('planned_for', { ascending: true }).limit(2000),
   ])
 
   const metricRows = metricsResult.data ?? []
@@ -140,10 +144,17 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
   const recentCutoff = Date.now() - recommendationSettings.balanceWindowDays * 86_400_000
   const recentUses = new Map<string, number>()
   const categoryNames = new Map((categoryResult.data ?? []).map((item) => [item.name, item.id]))
+  const publicationCategory = new Map((candidateResult.data ?? []).map((item) => [item.id, item.category_id]))
   const lastUse = new Map<string, string>()
+  const countedOccasions = new Set<string>()
+  const usedTodayKeys = new Set<string>()
   for (const row of historyResult.data ?? []) {
     if (row.publication_id && !lastUse.has(row.publication_id)) lastUse.set(row.publication_id, row.published_at)
-    const categoryId = row.category_snapshot ? categoryNames.get(row.category_snapshot) : undefined
+    if (Date.parse(row.published_at) >= Date.parse(todayStartUtc) && Date.parse(row.published_at) < Date.parse(tomorrowStartUtc)) usedTodayKeys.add(row.idempotency_key)
+    // History has one row per platform; balance counts each occasion once.
+    if (countedOccasions.has(row.idempotency_key)) continue
+    countedOccasions.add(row.idempotency_key)
+    const categoryId = publicationCategory.get(row.publication_id) ?? (row.category_snapshot ? categoryNames.get(row.category_snapshot) : undefined)
     if (categoryId && new Date(row.published_at).getTime() >= recentCutoff) recentUses.set(categoryId, (recentUses.get(categoryId) ?? 0) + 1)
   }
   const recommendationCategories: RecommendationCategory[] = (categoryResult.data ?? []).map((category) => {
@@ -152,7 +163,9 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
   })
   const tagsByPublication = new Map<string, string[]>()
   for (const tag of tagResult.data ?? []) tagsByPublication.set(tag.publication_id, [...(tagsByPublication.get(tag.publication_id) ?? []), tag.tag_id])
-  const scheduledToday = new Set((scheduledResult.data ?? []).map((item) => item.id))
+  const scheduledToday = new Set((scheduledResult.data ?? []).filter((item) => Date.parse(item.planned_for) < Date.parse(tomorrowStartUtc)).map((item) => item.publication_id))
+  const nextPlanned = new Map<string, string>()
+  for (const item of scheduledResult.data ?? []) if (!nextPlanned.has(item.publication_id)) nextPlanned.set(item.publication_id, item.planned_for)
   const recommendations = recommendDailyContent((candidateResult.data ?? []).map((item) => ({
     id: item.id,
     title: item.title,
@@ -161,6 +174,7 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
     createdAt: item.created_at,
     lastUsedAt: lastUse.get(item.id) ?? null,
     scheduledToday: scheduledToday.has(item.id),
+    nextPlannedAt: nextPlanned.get(item.id) ?? null,
   })), recommendationCategories, recommendationSettings)
 
   return {
@@ -168,18 +182,21 @@ export async function getOverviewData(supabase: SupabaseClient, userId: string):
     todayLabel: new Intl.DateTimeFormat('es', { dateStyle: 'full', timeZone: timezone }).format(new Date()),
     publications: ((publicationsResult.data ?? []) as unknown as Array<{
       id: string
-      title: string
-      category_id: string | null
-      categories: { name: string } | { name: string }[] | null
-      scheduled_for: string | null
+      publication_id: string
+      planned_for: string
       platforms: string[]
-    }>).map((publication) => {
-      const relation = publication.categories
+      status: 'planned' | 'fulfilled'
+      publications: { title: string; categories: { name: string } | { name: string }[] | null } | Array<{ title: string; categories: { name: string } | { name: string }[] | null }> | null
+    }>).map((slot) => {
+      const publication = Array.isArray(slot.publications) ? slot.publications[0] : slot.publications
+      const relation = publication?.categories
       const category = Array.isArray(relation) ? relation[0]?.name : relation?.name
-      return { id: publication.id, title: publication.title, category: category ?? null, scheduled_for: publication.scheduled_for, platforms: publication.platforms }
+      return { id: slot.id, publicationId: slot.publication_id, title: publication?.title ?? 'Publicación', category: category ?? null, scheduled_for: slot.planned_for, platforms: slot.platforms, status: slot.status }
     }),
     ideas: ideasResult.data ?? [],
     recommendations,
+    postsPerDay: recommendationSettings.postsPerDay,
+    usedToday: usedTodayKeys.size,
     chart,
     reachYesterday,
     reachChange: reachBefore ? ((reachYesterday - reachBefore) / reachBefore) * 100 : null,

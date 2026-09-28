@@ -6,6 +6,8 @@ export type RecommendationCandidate = {
   createdAt: string
   lastUsedAt: string | null
   scheduledToday: boolean
+  /** Next planned slot, if any. Planned content inside the rest period is not suggested again. */
+  nextPlannedAt?: string | null
 }
 
 export type RecommendationCategory = {
@@ -37,6 +39,10 @@ export function recommendDailyContent(
   const activeCategories = categories.filter((category) => category.enabled)
   const eligible = candidates.filter((candidate) => {
     if (candidate.scheduledToday) return false
+    if (candidate.nextPlannedAt) {
+      const daysUntilPlan = (new Date(candidate.nextPlannedAt).getTime() - now.getTime()) / dayMs
+      if (daysUntilPlan < Math.max(settings.minimumRepeatDays, 1)) return false
+    }
     if (candidate.lastUsedAt) {
       const daysSinceUse = Math.floor((now.getTime() - new Date(candidate.lastUsedAt).getTime()) / dayMs)
       if (daysSinceUse < settings.minimumRepeatDays) return false
