@@ -18,7 +18,7 @@ Construir un espacio de trabajo para crear y organizar publicaciones, registrar 
 | 7 | Generación de copy con IA | Cerrada salvo activación: falta `OPENAI_API_KEY` en Vercel y una generación real. Proveedor probado con respuestas simuladas (éxito, cuota, límite, timeout, salida inválida) |
 | 8 | Calendario interno y campañas | Implementada: programar, mover (diálogo y arrastrar), cancelar, registrar uso desde la programación, campañas con vigencia y meta |
 | 9 | Ideas y analítica operativa | Implementada: oportunidades explicadas con el historial, ideas ligadas a campañas y borradores, actividad real en Rendimiento |
-| 10 | OAuth y conexiones con Meta | Pendiente |
+| 10 | OAuth y conexiones con Meta | Implementada en código para Facebook Pages e Instagram profesional; falta aplicar migración y probar con una app real de Meta |
 | 11 | Importación y analítica de métricas sociales | Pendiente |
 | 12 | Rendimiento como señal para recomendaciones | Pendiente |
 | 13 | Publicación automática | Pendiente |
@@ -34,7 +34,7 @@ Construir un espacio de trabajo para crear y organizar publicaciones, registrar 
 - [x] Aplicar la migración de historial al proyecto Supabase conectado (confirmación visual del usuario).
 - [x] Verificar escritura, reintento, conflicto de clave, fecha futura y RLS con usuarios A, B y anónimo (local: pgTAP y `tests/integration`).
 - [ ] Ejecutar `supabase/verify_remote_state.sql` en el proyecto remoto.
-- [ ] Publicar código y migración juntos en `main` al cierre del cambio.
+- [x] Publicar código y migración juntos en `main` al cierre del cambio.
 
 ## Próxima fase: recomendador
 
@@ -80,6 +80,16 @@ Construir un espacio de trabajo para crear y organizar publicaciones, registrar 
 - [x] Guardar una oportunidad como idea (idempotente por clave) y programar desde ella.
 - [x] Ideas con campaña; conversión a borrador atómica e idempotente que enlaza la idea con su borrador.
 - [x] "Actividad real" en Rendimiento: ocasiones por día frente al objetivo, equilibrio por categoría frente al objetivo, plataformas, días y horas, contenido más reutilizado y cumplimiento del calendario. Separada de "Métricas de redes", que sigue sin datos inventados.
+
+## Fase 10: conexiones con Meta
+
+- [x] Inicio OAuth con estado temporal, callback verificado y selección de una Página administrada.
+- [x] Vincular la Página de Facebook y, si existe, su Instagram profesional. Los tokens quedan en `private`, no en la respuesta al navegador.
+- [x] Desconectar, reemplazar una conexión y mostrar caducidad del token.
+- [x] Impedir escritura directa en `social_connections` desde el navegador; las operaciones pasan por RPC con dueño autenticado.
+- [ ] Aplicar `20260930000100_meta_connections.sql` al proyecto remoto antes de desplegar el código correspondiente.
+- [ ] Configurar la app de Meta y probar el flujo real con una Página y una cuenta de Instagram profesional.
+- [ ] Confirmar permisos aprobados de Meta para usuarios externos y comportamiento cuando Meta revoca el acceso.
 
 ## Orden de trabajo
 

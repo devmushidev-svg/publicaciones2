@@ -59,3 +59,11 @@ Before applying to the remote project, run `verify_remote_state.sql` in the SQL 
 ## Applying phases 5–9 from the SQL Editor
 
 `apply_phases_5_to_9.sql` bundles migrations 20260925000700 through 20260928000400 in one transaction. It is idempotent (existing tables, policies and triggers are kept or recreated, no data is deleted), stops early if phases 3–4 are missing, and ends with a check that should show `true` on every row. It does not write to `supabase_migrations.schema_migrations`; if you later use `supabase db push` against that project, reconcile the history first.
+
+## Meta connections (20260930000100)
+
+Apply `migrations/20260930000100_meta_connections.sql` before deploying the matching application code. It makes `social_connections` read-only to clients, adds a private 10-minute Page-selection attempt, and exposes authenticated-only RPCs for completing or disconnecting a connection. Tokens remain in `private.social_connection_secrets`; only account names, IDs, and expiration dates are returned to the dashboard. Existing Facebook/Instagram rows without a stored token are marked inactive.
+
+Create a Meta developer app with Facebook Login and register the exact callback URL in its allowed OAuth redirect URIs. Set these server-side environment variables in each deployed environment: `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI` (for example `https://example.com/api/meta/callback`), `META_GRAPH_VERSION`, and `SUPABASE_SECRET_KEY` (the server-only Supabase secret key; the legacy `SUPABASE_SERVICE_ROLE_KEY` also works). The app requests `pages_show_list`, `instagram_basic`, and `pages_read_engagement`; Instagram requires a professional account linked to a Facebook Page. Do not put either secret in a `NEXT_PUBLIC_*` variable. Preview deployments need their own approved callback URL and matching environment settings. After applying the migration and configuring these values, set `META_CONNECTIONS_ENABLED=true` to expose the flow. It stays off by default, so deploying the code before the migration does not enable OAuth.
+
+Run `tests/meta_connections.test.sql` only against the disposable local Supabase stack. A real Meta OAuth run and revocation test still require a configured Meta app and eligible accounts; mocked unit tests cannot certify those external permissions.

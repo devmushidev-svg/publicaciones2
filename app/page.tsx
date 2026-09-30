@@ -7,10 +7,13 @@ import type { CategoryOption, TagOption } from '@/components/dashboard/dashboard
 import { publicationHistoryPageSize, type PublicationHistoryRecord, type PublicationRecord } from '@/lib/dashboard/publications'
 import type { CampaignRecord, HistoryLiteRecord, ScheduledPostRecord } from '@/lib/dashboard/schedule'
 import { findOpportunities } from '@/lib/insights/opportunities'
+import { getMetaConfig } from '@/lib/meta/graph'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ section?: string; meta?: string }> }) {
+  const { section, meta } = await searchParams
+  const asOf = new Date().getTime()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const userId = user?.id
@@ -85,7 +88,7 @@ export default async function Page() {
       .limit(2000),
     supabase
       .from('social_connections')
-      .select('id,provider,account_name,account_external_id,connected_at,last_synced_at,is_active')
+      .select('*')
       .eq('user_id', userId)
       .order('connected_at', { ascending: false }),
     supabase.from('account_preferences').select('timezone,week_starts_on,email_digest').eq('user_id', userId).maybeSingle(),
@@ -244,6 +247,10 @@ export default async function Page() {
     metricsError={Boolean(metricsError)}
     connections={connectionRows ?? []}
     connectionsError={Boolean(connectionsError)}
+    initialSection={section === 'Conexiones' ? 'Conexiones' : 'Inicio'}
+    metaStatus={meta ?? null}
+    metaConfigured={Boolean(getMetaConfig() && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY))}
+    asOf={asOf}
     settings={{
       email: user.email ?? '',
       fullName: profile?.full_name || metadataName || user.email?.split('@')[0] || '',

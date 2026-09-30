@@ -52,11 +52,15 @@ type DashboardShellProps = {
   metricsError: boolean
   connections: SocialConnectionRecord[]
   connectionsError: boolean
+  initialSection: string
+  metaStatus: string | null
+  metaConfigured: boolean
+  asOf: number
   settings: { email: string; fullName: string; timezone: string; weekStartsOn: number; emailDigest: boolean; hasError: boolean }
 }
 
-export function DashboardShell({ userName, overview, publications, history, publicationsError, historyError, categories, tags, taxonomyError, recommendationSettings, categoryPreferences, recommendationSettingsError, insightCategories, scheduledPosts, campaigns, historyLite, opportunities, scheduleError, assets, mediaError, storageError, ideas, ideasError, aiMonthlyUsage, metrics, metricsError, connections, connectionsError, settings }: DashboardShellProps) {
-  const [active, setActive] = useState('Inicio')
+export function DashboardShell({ userName, overview, publications, history, publicationsError, historyError, categories, tags, taxonomyError, recommendationSettings, categoryPreferences, recommendationSettingsError, insightCategories, scheduledPosts, campaigns, historyLite, opportunities, scheduleError, assets, mediaError, storageError, ideas, ideasError, aiMonthlyUsage, metrics, metricsError, connections, connectionsError, initialSection, metaStatus, metaConfigured, asOf, settings }: DashboardShellProps) {
+  const [active, setActive] = useState(initialSection)
   const [searchTarget, setSearchTarget] = useState<{ section: string; query: string } | null>(null)
   const [homePublicationOpen, setHomePublicationOpen] = useState(false)
   const [scheduleRequest, setScheduleRequest] = useState<{ publicationId?: string; campaignId?: string } | null>(null)
@@ -121,7 +125,7 @@ export function DashboardShell({ userName, overview, publications, history, publ
               : active === 'Rendimiento'
                 ? <DashboardPerformance metrics={metrics} publications={publications} hasError={metricsError} history={historyLite} scheduledPosts={scheduledPosts} categories={insightCategories} postsPerDay={recommendationSettings.postsPerDay} timezone={settings.timezone} activityError={scheduleError} />
                 : active === 'Conexiones'
-                  ? <DashboardConnections connections={connections} hasError={connectionsError} />
+                  ? <DashboardConnections connections={connections} hasError={connectionsError} metaStatus={metaStatus} metaConfigured={metaConfigured} asOf={asOf} />
                   : active === 'Configuración'
                     ? <><DashboardSettings {...settings} /><DashboardRecommendationSettings categories={categories} settings={recommendationSettings} preferences={categoryPreferences} hasError={recommendationSettingsError} /><DashboardTaxonomy categories={categories} tags={tags} hasError={taxonomyError} /></>
                     : active === 'Publicaciones'
