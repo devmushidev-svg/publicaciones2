@@ -8,11 +8,36 @@ import {
 import { createAdminClient } from './admin'
 import { getSupabasePublicConfig } from './config'
 import { privateConfig } from '../private-access'
+import { selectSingleOwner } from './owner-selection'
+
+let discovered: { url: string; id: string; expires: number } | undefined
+
+export async function resolveOwnerId() {
+  const { ownerId } = privateConfig()
+  if (ownerId) return ownerId
+  const { url } = getSupabasePublicConfig()
+  if (discovered?.url === url && discovered.expires > Date.now())
+    return discovered.id
+  const admin = createAdminClient()
+  if (!admin) throw new Error('Falta SUPABASE_SECRET_KEY en el servidor.')
+  // Dos resultados bastan para detectar ambigüedad sin descargar todas las cuentas.
+  const { data, error } = await admin.auth.admin.listUsers({
+    page: 1,
+    perPage: 2,
+  })
+  if (error)
+    throw new Error(
+      'No se pudo identificar la cuenta propietaria. Revisá la clave de servidor de Supabase.',
+    )
+  const id = selectSingleOwner(data.users)
+  discovered = { url, id, expires: Date.now() + 5000 }
+  return id
+}
 
 // Sesión REAL del dueño existente: conserva auth.uid() y todas las políticas RLS.
 // generateLink no envía correo ni expone la clave administrativa al navegador.
-export async function issueOwnerSession(): Promise<Session> {
-  const { ownerId } = privateConfig()
+export async function issueOwnerSession(ownerId?: string): Promise<Session> {
+  ownerId = ownerId || (await resolveOwnerId())
   const admin = createAdminClient()
   if (!admin) throw new Error('Falta SUPABASE_SECRET_KEY en el servidor.')
   const owner = await admin.auth.admin.getUserById(ownerId)
@@ -48,14 +73,14 @@ let cached:
 let pending: Promise<SupabaseClient> | undefined
 
 export async function createOwnerClient() {
-  const { ownerId } = privateConfig()
+  const ownerId = await resolveOwnerId()
   const { url, publishableKey } = getSupabasePublicConfig()
   const identity = `${url}:${ownerId}`
   if (cached?.identity === identity && cached.expires > Date.now() + 60_000)
     return cached.client
   if (!pending)
     pending = (async () => {
-      const session = await issueOwnerSession()
+      const session = await issueOwnerSession(ownerId)
       const client = createClient(url, publishableKey, {
         auth: { persistSession: false, autoRefreshToken: false },
       })

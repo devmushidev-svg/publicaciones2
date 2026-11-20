@@ -28,7 +28,7 @@ class Bridge:
         self.s = s
         self.store = Catalogo(s.DATA_DIR, s.TZ, s.DRY_RUN)
         self.url = os.environ.get('CATALOGO_URL', '').rstrip('/')
-        self.key = os.environ.get('CATALOGO_API_KEY', '')
+        self.key = os.environ.get('CATALOGO_API_KEY', '').strip() or s.SECRET
         with self.store.conexion() as db:
             if 'not_before' not in {r[1] for r in db.execute('PRAGMA table_info(publicaciones)')}:
                 db.execute('ALTER TABLE publicaciones ADD COLUMN not_before REAL NOT NULL DEFAULT 0')
@@ -37,9 +37,9 @@ class Bridge:
 
     async def api(self, action, data=None, files=None):
         parsed = httpx.URL(self.url)
-        if (not self.key or len(self.key)<32 or not parsed.host or
+        if (not self.key or len(self.key)<24 or not parsed.host or
             (parsed.scheme != 'https' and not (self.s.DRY_RUN and parsed.host in ('localhost','127.0.0.1')))):
-            raise ValueError('Configurá CATALOGO_URL (HTTPS) y CATALOGO_API_KEY en el MCP.')
+            raise ValueError('Configurá CATALOGO_URL (HTTPS). Se usa MCP_SECRET, o CATALOGO_API_KEY si la definiste.')
         try:
             async with httpx.AsyncClient(timeout=90, follow_redirects=False) as client:
                 response = await client.post(self.url+'/api/catalogo/'+action,

@@ -21,7 +21,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp=tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.s=SimpleNamespace(DATA_DIR=Path(self.tmp.name),TZ=TZ,DRY_RUN=True,
+        self.s=SimpleNamespace(DATA_DIR=Path(self.tmp.name),TZ=TZ,DRY_RUN=True,SECRET='secreto-existente-del-mcp-para-pruebas',
             MAX_ANTICIPACION=timedelta(days=30),TOKENS=[],_pagina=lambda _:('123','token','Tocoa'),
             _graph=AsyncMock(return_value={'id':'123_456'}),_validar_programacion=lambda dt:int(dt.timestamp()))
         self.bridge=Bridge(self.s)
@@ -35,6 +35,12 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         if action=='listar': return copy.deepcopy(self.data)
         if action=='guardar': return {'id':'saved'}
         return {'ok':True}
+
+    async def test_existing_mcp_secret_and_optional_dedicated_key(self):
+        with patch.dict(os.environ, {'CATALOGO_API_KEY':''}):
+            self.assertEqual(Bridge(self.s).key,self.s.SECRET)
+        with patch.dict(os.environ, {'CATALOGO_API_KEY':'dedicated-catalogue-key-32-characters'}):
+            self.assertEqual(Bridge(self.s).key,'dedicated-catalogue-key-32-characters')
 
     def add(self,n=1,category=None,**changes):
         for i in range(n):

@@ -4,21 +4,22 @@ export const accessCookie = 'norte-private-access'
 export const accessSeconds = 30 * 24 * 60 * 60
 
 export function privateConfig() {
-  const key = process.env.CATALOG_ACCESS_KEY?.trim()
+  const dedicatedKey = process.env.CATALOG_ACCESS_KEY?.trim()
+  const key = dedicatedKey || process.env.MCP_SECRET?.trim()
   const ownerId = process.env.CATALOG_OWNER_ID?.trim()
   if (
     !key ||
-    key.length < 32 ||
-    !ownerId ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      ownerId,
-    )
+    key.length < (dedicatedKey ? 32 : 24) ||
+    (ownerId &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        ownerId,
+      ))
   ) {
     throw new Error(
-      'Configura CATALOG_ACCESS_KEY (32 caracteres o más) y CATALOG_OWNER_ID.',
+      'Configura MCP_SECRET con el secreto existente de tu publicador.',
     )
   }
-  return { key, ownerId }
+  return { key, ownerId, ownerBinding: ownerId || 'single-owner' }
 }
 
 export function sameSecret(actual: string, expected: string) {
@@ -49,10 +50,11 @@ export function validAccess(
 }
 
 export function validApiKey(authorization: string | null) {
-  const key = process.env.CATALOG_API_KEY?.trim()
+  const dedicatedKey = process.env.CATALOG_API_KEY?.trim()
+  const key = dedicatedKey || process.env.MCP_SECRET?.trim()
   return Boolean(
     key &&
-      key.length >= 32 &&
+      key.length >= (dedicatedKey ? 32 : 24) &&
       authorization?.startsWith('Bearer ') &&
       sameSecret(authorization.slice(7), key),
   )
