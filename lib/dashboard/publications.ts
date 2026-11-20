@@ -5,6 +5,9 @@ export type PublicationRecord = {
   title: string
   body: string
   category: string | null
+  approved_for_batch?: boolean
+  valid_until?: string | null
+  facebook_page?: 'tocoa' | 'floristeria'
   category_id: string | null
   status: PublicationStatus
   scheduled_for: string | null

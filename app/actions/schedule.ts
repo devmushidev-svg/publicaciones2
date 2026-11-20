@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { publicationPlatforms } from '@/lib/dashboard/publications'
 import type { ScheduleActionState } from '@/lib/dashboard/schedule'
 import { dateTimeInputToIso } from '@/lib/date-time'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const datePattern = /^\d{4}-\d{2}-\d{2}$/
@@ -19,6 +20,13 @@ async function authenticated() {
   const { data: { user } } = await supabase.auth.getUser()
   return { supabase, user }
 }
+
+async function managedByChatGPT(supabase: SupabaseClient,id: string) {
+  const {data,error}=await supabase.from('scheduled_posts').select('notes').eq('id',id).maybeSingle()
+  if (error) return true
+  return data?.notes?.startsWith('ChatGPT:') ?? false
+}
+const mcpPlanError={error:'Este envío automático se administra desde ChatGPT. Pedí mover o cancelar el plan allí para mantener sincronizada la cola.'}
 
 function scheduleError(code: string | undefined, message: string | undefined): string {
   if (code === 'P0002') return message?.includes('Campaign') ? 'La campaña no existe o está archivada.' : 'No encontramos esa publicación o programación activa.'
@@ -76,6 +84,7 @@ export async function reschedulePost(_previous: ScheduleActionState, formData: F
   const timezone = field(formData, 'timezone') || 'America/Tegucigalpa'
   if (!uuidPattern.test(id)) return { error: 'No encontramos esa programación.' }
   if (campaignId && !uuidPattern.test(campaignId)) return { error: 'Selecciona una campaña válida.' }
+  if (await managedByChatGPT(supabase,id)) return mcpPlanError
   const plannedFor = dateTimeInputToIso(field(formData, 'planned_for'), timezone)
   if (!plannedFor) return { error: 'La fecha u hora no existe en tu zona horaria.' }
 
@@ -92,6 +101,7 @@ export async function moveScheduledPost(id: string, plannedForIso: string, campa
   if (!uuidPattern.test(id) || (campaignId && !uuidPattern.test(campaignId)) || Number.isNaN(Date.parse(plannedForIso))) {
     return { error: 'No se pudo mover la programación.' }
   }
+  if (await managedByChatGPT(supabase,id)) return mcpPlanError
   const { error } = await supabase.rpc('reschedule_my_post', { p_id: id, p_planned_for: new Date(plannedForIso).toISOString(), p_campaign_id: campaignId })
   if (error) return { error: scheduleError(error.code, error.message) }
   revalidatePath('/')
@@ -103,6 +113,7 @@ export async function cancelScheduledPost(_previous: ScheduleActionState, formDa
   if (!user) return { error: 'Tu sesión venció. Inicia sesión nuevamente.' }
   const id = field(formData, 'id')
   if (!uuidPattern.test(id)) return { error: 'No encontramos esa programación.' }
+  if (await managedByChatGPT(supabase,id)) return mcpPlanError
   const { error } = await supabase.rpc('cancel_my_scheduled_post', { p_id: id })
   if (error) return { error: scheduleError(error.code, error.message) }
   revalidatePath('/')
