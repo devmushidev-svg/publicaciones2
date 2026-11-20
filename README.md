@@ -5,7 +5,7 @@ Catálogo privado de Multiplanet para organizar publicaciones, fotos y calendari
 ## Acceso sin formulario de login
 
 La web es de un solo propietario. Se retiraron los formularios de inicio, registro y
-recuperación, y el botón Salir. Entrá por `https://TU_SITIO/access/<CATALOG_ACCESS_KEY>`;
+recuperación, y el botón Salir. Entrá por `https://TU_SITIO/access/<MCP_SECRET>`;
 después abre directamente la biblioteca y recuerda el acceso durante 30 días.
 El enlace es privado: quien lo tenga accede a tu espacio. Cambiar la clave invalida
 el acceso anterior. Sin el enlace o su cookie firmada, la aplicación devuelve 404.
@@ -13,17 +13,24 @@ el acceso anterior. Sin el enlace o su cookie firmada, la aplicación devuelve 4
 Se conserva la cuenta propietaria y sus reglas RLS en Supabase. El servidor abre una
 sesión real de esa cuenta, sin pedir correo, contraseña o códigos y sin enviar correo.
 No se crean usuarios anónimos nuevos ni se comparte la clave administrativa con el
-navegador. `CATALOG_OWNER_ID` debe ser el ID del usuario **que ya posee tus publicaciones**.
+navegador. Si hay una sola cuenta en Supabase, se elige automáticamente. Si hay varias,
+se pide `CATALOG_OWNER_ID` para identificar al dueño de tus publicaciones.
 
 Configuración privada del servidor web, además de la URL y clave pública de Supabase:
 
 - `SUPABASE_SECRET_KEY` (o `SUPABASE_SERVICE_ROLE_KEY`): clave administrativa, solo servidor.
-- `CATALOG_OWNER_ID`: UUID de tu usuario existente en Supabase Auth.
-- `CATALOG_ACCESS_KEY`: clave del enlace web, de 32 caracteres o más.
-- `CATALOG_API_KEY`: otra clave, distinta, de 32 caracteres o más para el puente del MCP.
+- `MCP_SECRET`: copiá el mismo secreto que ya usa el publicador. Sirve tanto para el
+  enlace privado de la web como para la conexión del MCP; no hay que crear claves nuevas.
 
-Generá cada clave con `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-No uses prefijos `NEXT_PUBLIC_` para esas cuatro variables.
+Si Supabase ya está conectado en Vercel, solo falta agregar `MCP_SECRET` en Production
+y hacer Redeploy. El secreto está en el `.env` existente de tu VM y en la parte final
+de la URL `/mcp/<secreto>` de tu conexión de ChatGPT. Pegalo directamente en Vercel.
+No uses un prefijo `NEXT_PUBLIC_` para este valor.
+
+Compatibilidad: si ya configuraste `CATALOG_OWNER_ID`, `CATALOG_ACCESS_KEY` o
+`CATALOG_API_KEY`, se respetan. Las claves separadas son opcionales; si no existen,
+se usa `MCP_SECRET`. Un catálogo con cero cuentas o varias cuentas no se asigna al
+azar ni crea usuarios nuevos.
 
 ## Publicar y programar desde ChatGPT
 
@@ -57,8 +64,10 @@ Configurá las variables de la web y, en el `.env` **existente** del MCP, agreg�
 
 ```dotenv
 CATALOGO_URL=https://TU_SITIO
-CATALOGO_API_KEY=el_mismo_valor_privado_de_CATALOG_API_KEY
 ```
+
+El MCP reutiliza su `MCP_SECRET`. Solo si elegiste una clave separada, agregá
+`CATALOGO_API_KEY` con el valor de `CATALOG_API_KEY` configurado en la web.
 
 Después instalá la versión de `mcp/` conservando tokens de Facebook, `MCP_SECRET` y
 `DATA_DIR`. El dominio y la ruta del MCP pueden permanecer iguales. La biblioteca
@@ -80,7 +89,7 @@ Variables necesarias:
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: clave pública publishable; nunca uses aquí una service-role key.
 - `NEXT_PUBLIC_SITE_URL`: origen público de la aplicación, usado por confirmación y recuperación de contraseña.
 
-Configurá también las cuatro variables privadas indicadas arriba. La navegación de
+Configurá también las variables privadas indicadas arriba. La navegación de
 la aplicación ya no usa los formularios ni el flujo de recuperación de contraseña.
 
 ## Base de datos

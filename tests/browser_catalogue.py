@@ -2,10 +2,12 @@
 Ejecutar con un Python con playwright instalado. El resto de la aplicación es real.
 """
 import base64
+import http.cookiejar
 import json
 import os
 import socket
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -16,14 +18,12 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
-
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'test-results'
 OUT.mkdir(exist_ok=True)
 OWNER='11111111-1111-4111-8111-111111111111'
 KEY='private-browser-test-key-over-thirty-two-characters'
-API_KEY='bridge-browser-test-key-over-thirty-two-characters'
+API_KEY=KEY
 CAT='22222222-2222-4222-8222-222222222222'
 now=datetime.now(timezone.utc).isoformat()
 USER={'id':OWNER,'email':'qa@example.test','aud':'authenticated','role':'authenticated',
@@ -62,6 +62,8 @@ class Supabase(BaseHTTPRequestHandler):
     def do_HEAD(self): self.do_GET()
     def do_GET(self):
         parsed=urllib.parse.urlparse(self.path)
+        if parsed.path=='/auth/v1/admin/users':
+            return self.output({'users':[USER],'aud':'authenticated'})
         if parsed.path.startswith('/auth/v1/'):
             return self.output(USER)
         table=parsed.path.split('/')[-1]
@@ -108,7 +110,9 @@ with socket.socket() as sock:
 base=f'http://127.0.0.1:{port}'
 env={**os.environ,'NEXT_PUBLIC_SUPABASE_URL':f'http://127.0.0.1:{supabase.server_port}',
     'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY':'sb_publishable_test','SUPABASE_SECRET_KEY':'server-only-test',
-    'CATALOG_OWNER_ID':OWNER,'CATALOG_ACCESS_KEY':KEY,'CATALOG_API_KEY':API_KEY,'NEXT_PUBLIC_SITE_URL':base}
+    'MCP_SECRET':KEY,'NEXT_PUBLIC_SITE_URL':base}
+for optional in ['CATALOG_OWNER_ID','CATALOG_ACCESS_KEY','CATALOG_API_KEY']:
+    env.pop(optional,None)
 log=(OUT/'web-server.log').open('w',encoding='utf-8')
 process=subprocess.Popen(['node',str(ROOT/'node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',str(port)],cwd=ROOT,env=env,stdout=log,stderr=log)
 try:
@@ -121,45 +125,61 @@ try:
     try: post(base+'/api/catalogo/listar',{})
     except urllib.error.HTTPError as error: assert error.code==401
     else: raise AssertionError('API pública sin clave')
-    with sync_playwright() as p:
-        edge=Path(os.environ.get('PROGRAMFILES(X86)',r'C:\Program Files (x86)'))/'Microsoft/Edge/Application/msedge.exe'
-        browser=p.chromium.launch(executable_path=str(edge),headless=True)
-        page=browser.new_page(viewport={'width':1440,'height':1000})
-        errors=[]
-        console_errors=[]
-        failed_requests=[]
-        redirects=[]
-        page.on('pageerror',lambda e:errors.append(str(e)))
-        page.on('console',lambda m:console_errors.append(m.text) if m.type=='error' else None)
-        page.on('requestfailed',lambda r:failed_requests.append({'url':r.url,'error':r.failure}))
-        page.on('response',lambda r:redirects.append({'url':r.url,'location':r.headers.get('location'),'cookie':r.headers.get('set-cookie')}) if r.status in (307,302) else None)
-        response=page.goto(base+'/access/'+KEY,wait_until='networkidle',timeout=120000)
-        assert response.status==200, {'body':page.locator('body').inner_text(),'url':page.url,'redirects':redirects,'cookies':page.context.cookies()}
-        page.get_by_role('heading',name='Biblioteca',exact=True).wait_for()
-        assert page.get_by_label('Contraseña',exact=True).count()==0
-        page.screenshot(path=str(OUT/'biblioteca-chatgpt.png'),full_page=False)
-        page.wait_for_function("Array.from(document.querySelectorAll('button')).some(el=>el.textContent.includes('Nueva publicación') && Object.keys(el).some(key=>key.startsWith('__reactProps$')))")
-        page.get_by_role('button',name='Nueva publicación',exact=True).click()
-        assert not errors,errors
-        dialog=page.locator('dialog[open]').filter(has=page.locator('#publication-dialog-title'))
-        dialog.locator('[name="title"]').fill('Creada desde la web')
-        dialog.locator('[name="body"]').fill('El MCP debe leer este mismo contenido.')
-        dialog.locator('[name="category_id"]').select_option(CAT)
-        dialog.locator('[name="approved_for_batch"]').check()
-        dialog.locator('[name="facebook_page"]').select_option('tocoa')
-        dialog.get_by_role('button',name='Guardar publicación',exact=True).click()
-        dialog.wait_for(state='hidden')
-        page.get_by_text('Creada desde la web',exact=True).wait_for()
+    if '--http-only' in sys.argv:
+        cookies=http.cookiejar.CookieJar()
+        client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
+        with client.open(base+'/access/'+KEY,timeout=120) as response:
+            html=response.read().decode()
+            assert response.status==200,html
+            assert response.url==base+'/',response.url
+            assert 'Biblioteca' in html,html
+            assert 'Asesoría para tu visa americana' in html,html
+            assert any(cookie.name=='norte-private-access' for cookie in cookies)
+            assert any('auth-token' in cookie.name for cookie in cookies)
         response=json.load(post(base+'/api/catalogo/listar',{},API_KEY))
-        assert any(p['title']=='Creada desde la web' and p['approved_for_batch'] for p in response['publications'])
-        page.goto(base+'/login',wait_until='networkidle')
-        page.get_by_role('heading',name='Biblioteca',exact=True).wait_for()
-        page.set_viewport_size({'width':390,'height':844})
-        page.screenshot(path=str(OUT/'biblioteca-mobile.png'),full_page=False)
-        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
-        assert not errors,errors
-        browser.close()
-    print('OK: enlace privado sin login, cookie de dueño, biblioteca, guardar con aprobación y lectura por la API del MCP; móvil sin desbordamiento.')
+        assert len(response['publications'])==3,response
+        print('OK: MCP_SECRET único, dueño detectado, sesión real, biblioteca y API del MCP; API sin clave rechazada.')
+    else:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            edge=Path(os.environ.get('PROGRAMFILES(X86)',r'C:\Program Files (x86)'))/'Microsoft/Edge/Application/msedge.exe'
+            browser=p.chromium.launch(executable_path=str(edge),headless=True)
+            page=browser.new_page(viewport={'width':1440,'height':1000})
+            errors=[]
+            console_errors=[]
+            failed_requests=[]
+            redirects=[]
+            page.on('pageerror',lambda e:errors.append(str(e)))
+            page.on('console',lambda m:console_errors.append(m.text) if m.type=='error' else None)
+            page.on('requestfailed',lambda r:failed_requests.append({'url':r.url,'error':r.failure}))
+            page.on('response',lambda r:redirects.append({'url':r.url,'location':r.headers.get('location'),'cookie':r.headers.get('set-cookie')}) if r.status in (307,302) else None)
+            response=page.goto(base+'/access/'+KEY,wait_until='networkidle',timeout=120000)
+            assert response.status==200, {'body':page.locator('body').inner_text(),'url':page.url,'redirects':redirects,'cookies':page.context.cookies()}
+            page.get_by_role('heading',name='Biblioteca',exact=True).wait_for()
+            assert page.get_by_label('Contraseña',exact=True).count()==0
+            page.screenshot(path=str(OUT/'biblioteca-chatgpt.png'),full_page=False)
+            page.wait_for_function("Array.from(document.querySelectorAll('button')).some(el=>el.textContent.includes('Nueva publicación') && Object.keys(el).some(key=>key.startsWith('__reactProps$')))")
+            page.get_by_role('button',name='Nueva publicación',exact=True).click()
+            assert not errors,errors
+            dialog=page.locator('dialog[open]').filter(has=page.locator('#publication-dialog-title'))
+            dialog.locator('[name="title"]').fill('Creada desde la web')
+            dialog.locator('[name="body"]').fill('El MCP debe leer este mismo contenido.')
+            dialog.locator('[name="category_id"]').select_option(CAT)
+            dialog.locator('[name="approved_for_batch"]').check()
+            dialog.locator('[name="facebook_page"]').select_option('tocoa')
+            dialog.get_by_role('button',name='Guardar publicación',exact=True).click()
+            dialog.wait_for(state='hidden')
+            page.get_by_text('Creada desde la web',exact=True).wait_for()
+            response=json.load(post(base+'/api/catalogo/listar',{},API_KEY))
+            assert any(p['title']=='Creada desde la web' and p['approved_for_batch'] for p in response['publications'])
+            page.goto(base+'/login',wait_until='networkidle')
+            page.get_by_role('heading',name='Biblioteca',exact=True).wait_for()
+            page.set_viewport_size({'width':390,'height':844})
+            page.screenshot(path=str(OUT/'biblioteca-mobile.png'),full_page=False)
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            assert not errors,errors
+            browser.close()
+        print('OK: enlace privado sin login, cookie de dueño, biblioteca, guardar con aprobación y lectura por la API del MCP; móvil sin desbordamiento.')
 finally:
     subprocess.run(['taskkill','/PID',str(process.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     process.wait(timeout=15)

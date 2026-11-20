@@ -21,13 +21,17 @@ export async function GET(
       status: 303,
       headers: { Location: '/' },
     })
-    response.cookies.set(accessCookie, signAccess(config.key, config.ownerId), {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: request.nextUrl.protocol === 'https:',
-      path: '/',
-      maxAge: accessSeconds,
-    })
+    response.cookies.set(
+      accessCookie,
+      signAccess(config.key, config.ownerBinding),
+      {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: request.nextUrl.protocol === 'https:',
+        path: '/',
+        maxAge: accessSeconds,
+      },
+    )
     response.headers.set('Cache-Control', 'private, no-store')
     response.headers.set('Referrer-Policy', 'no-referrer')
     return response

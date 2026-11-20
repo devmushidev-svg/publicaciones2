@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
-import { createOwnerClient } from '@/lib/supabase/owner'
-import { validApiKey, privateConfig } from '@/lib/private-access'
+import { createOwnerClient, resolveOwnerId } from '@/lib/supabase/owner'
+import { validApiKey } from '@/lib/private-access'
 import { inspectMediaFile } from '@/lib/media-upload'
 
 export const runtime = 'nodejs'
@@ -45,7 +45,7 @@ export async function POST(
   try {
     const { action } = await params
     const supabase = await createOwnerClient()
-    const { ownerId } = privateConfig()
+    const ownerId = await resolveOwnerId()
     // PostgREST entrega páginas; recorrerlas evita truncar el catálogo cuando crezca.
     async function all(table: string, select = '*') {
       const rows: Record<string, unknown>[] = []
@@ -344,6 +344,7 @@ export async function POST(
       'SUPABASE_SERVICE_ROLE_KEY',
       'CATALOG_API_KEY',
       'CATALOG_ACCESS_KEY',
+      'MCP_SECRET',
     ]) {
       const secret = process.env[key]
       if (secret) message = message.replaceAll(secret, '[oculto]')

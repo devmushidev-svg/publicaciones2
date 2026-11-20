@@ -14,7 +14,9 @@ preparar un lote vuelve a consultar la biblioteca para leer sus cambios.
 
 1. Aplicá la migración del catálogo y configurá la web según el README principal.
 2. Conservá el `.env` de tu MCP actual y agregá `CATALOGO_URL` (origen HTTPS de esta
-   web) y `CATALOGO_API_KEY` (el mismo valor privado de `CATALOG_API_KEY` en la web).
+   web). Reutiliza su `MCP_SECRET`, cuyo valor también se configura en Vercel. No
+   hay que generar claves nuevas. Si preferís una clave separada, podés definir
+   `CATALOGO_API_KEY` con el valor de `CATALOG_API_KEY` en la web.
 3. Conservá `MCP_SECRET`, los tokens de Facebook, `DATA_DIR` y su volumen. No hay que
    cambiar la conexión de ChatGPT si el dominio y el secreto permanecen iguales.
 4. Instalá `pip install -r requirements.txt` y ejecutá `python server.py` desde esta
