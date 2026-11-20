@@ -53,17 +53,19 @@ export async function savePublication(
     }
   }
 
-  const { data: savedId, error } = await supabase.rpc('save_my_publication', {
+  const { data: savedId, error } = await supabase.rpc('save_my_catalogue_publication', {
     p_id: id || null,
     p_title: title,
     p_body: body,
     p_category_id: categoryId || null,
     p_status: status,
-    p_scheduled_for: null,
     p_published_at: status === 'published' ? (value(formData, 'published_at') || new Date().toISOString()) : null,
     p_platforms: platforms,
     p_media_ids: mediaIds,
     p_tag_ids: tagIds,
+    p_approved_for_batch: formData.get('approved_for_batch') === 'on',
+    p_valid_until: value(formData, 'valid_until') || null,
+    p_facebook_page: value(formData, 'facebook_page') || 'tocoa',
   })
   if (error) {
     if (error.code === '23503') return { error: 'Una categoría, imagen o etiqueta seleccionada ya no está disponible.' }

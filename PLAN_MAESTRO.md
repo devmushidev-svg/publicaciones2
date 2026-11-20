@@ -21,7 +21,13 @@ Construir un espacio de trabajo para crear y organizar publicaciones, registrar 
 | 10 | OAuth y conexiones con Meta | Implementada en código para Facebook Pages e Instagram profesional; falta aplicar migración y probar con una app real de Meta |
 | 11 | Importación y analítica de métricas sociales | Pendiente |
 | 12 | Rendimiento como señal para recomendaciones | Pendiente |
-| 13 | Publicación automática | Pendiente |
+| 13 | Publicación automática | Implementada mediante el MCP de Facebook en `mcp/`, con biblioteca compartida, lotes revisados y cola durable. Pendiente: aplicar `20261120000100`, configurar dueño y claves del puente, y verificar el flujo real en producción |
+
+La vía principal de publicación es ChatGPT; la web es el catálogo secundario. El
+acceso web ahora usa un enlace privado de propietario sin formulario de login.
+Esta integración reutiliza las credenciales del MCP existente y no depende de
+activar el OAuth de Meta del panel. La publicación real en Facebook debe probarse
+después de configurar el entorno correcto; las pruebas automatizadas usan simulación.
 
 ## Fase 5: criterio de cierre
 

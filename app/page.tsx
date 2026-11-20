@@ -52,7 +52,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
     getOverviewData(supabase, userId),
     supabase
       .from('publications')
-      .select('id,title,body,category_id,categories(name),status,scheduled_for,published_at,platforms,created_at')
+      .select('id,title,body,approved_for_batch,valid_until,facebook_page,category_id,categories(name),status,scheduled_for,published_at,platforms,created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(1000),
@@ -247,7 +247,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
     metricsError={Boolean(metricsError)}
     connections={connectionRows ?? []}
     connectionsError={Boolean(connectionsError)}
-    initialSection={section === 'Conexiones' ? 'Conexiones' : 'Inicio'}
+    initialSection={section === 'Conexiones' ? 'Conexiones' : 'Biblioteca'}
     metaStatus={meta ?? null}
     metaConfigured={Boolean(getMetaConfig() && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY))}
     asOf={asOf}

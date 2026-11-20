@@ -60,9 +60,8 @@ export function PublicationDialog({ publication, onClose, timezone = 'America/Te
   useEffect(() => {
     const dialog = dialogRef.current
     if (dialog && !dialog.open) dialog.showModal()
-    return () => {
-      if (dialog?.open) dialog.close()
-    }
+    // Al desmontar, el navegador retira el diálogo. Cerrar en el cleanup dispara
+    // onClose durante el montaje doble de StrictMode y descarta el editor recién abierto.
   }, [])
 
   useEffect(() => {
@@ -86,7 +85,7 @@ export function PublicationDialog({ publication, onClose, timezone = 'America/Te
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 id="publication-dialog-title" className="font-serif text-2xl">{publication ? 'Editar publicación' : 'Nueva publicación'}</h2>
-            <p className="mt-1 text-sm text-[#747b72]">Guarda el contenido. Prográmalo después desde el calendario.</p>
+            <p className="mt-1 text-sm text-[#747b72]">Guarda el contenido. Podrás pedirle a ChatGPT que lo publique o prepare un lote.</p>
           </div>
           <button type="button" aria-label="Cerrar" onClick={() => dialogRef.current?.close()} className="rounded-md p-2 text-[#737b72] hover:bg-[#e8ebe3]"><X className="size-4" /></button>
         </div>
@@ -122,6 +121,9 @@ export function PublicationDialog({ publication, onClose, timezone = 'America/Te
           <label className="text-sm font-medium sm:col-span-2">Texto
             <textarea name="body" rows={5} defaultValue={publication?.body ?? ''} className="mt-1.5 w-full resize-y rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3 py-2.5 text-sm outline-none focus:border-[#71866f] focus:ring-2 focus:ring-[#71866f]/20" />
           </label>
+          <label className="flex items-start gap-2 text-sm sm:col-span-2"><input name="approved_for_batch" type="checkbox" defaultChecked={publication?.approved_for_batch ?? false} className="mt-1 size-4 accent-[#526e58]" /><span>Aprobada para lotes desde ChatGPT<small className="mt-1 block text-xs font-normal text-[#747b72]">Los diseños de flores se seleccionan manualmente, aunque marques esta opción.</small></span></label>
+          <label className="text-sm font-medium">Vigente hasta (opcional)<input name="valid_until" type="date" defaultValue={publication?.valid_until ?? ''} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3" /></label>
+          <label className="text-sm font-medium">Página de Facebook<select name="facebook_page" defaultValue={publication?.facebook_page ?? 'tocoa'} className="mt-1.5 h-11 w-full rounded-md border border-[#d7dad2] bg-[#fbfbf8] px-3"><option value="tocoa">Multiplanet Tocoa</option><option value="floristeria">Multiplanet Floristería</option></select></label>
         </div>
 
         <fieldset className="mt-5 border-t border-[#dedfd8] pt-5">
