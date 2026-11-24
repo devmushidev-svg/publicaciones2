@@ -7,7 +7,10 @@ import {
   validApiKey,
   privateConfig,
 } from '../lib/private-access.ts'
-import { selectSingleOwner } from '../lib/supabase/owner-selection.ts'
+import {
+  selectOwnerByContent,
+  selectSingleOwner,
+} from '../lib/supabase/owner-selection.ts'
 
 const key = 'a-private-key-with-more-than-32-characters'
 const owner = '11111111-1111-4111-8111-111111111111'
@@ -105,4 +108,13 @@ test('password alone is enough to sign web access', () => {
       else process.env[name] = old[i]
     })
   }
+})
+
+test('with several accounts, the one with publications is the owner', () => {
+  const a = { id: 'a', email: 'a@x.com' }
+  const b = { id: 'b', email: 'b@x.com' }
+  assert.equal(selectOwnerByContent([a, b], ['b']), 'b')
+  assert.equal(selectOwnerByContent([a], []), 'a')
+  assert.throws(() => selectOwnerByContent([a, b], []), /b@x.com = b/)
+  assert.throws(() => selectOwnerByContent([a, b], ['a', 'b']))
 })

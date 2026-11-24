@@ -8,7 +8,7 @@ import {
 import { createAdminClient } from './admin'
 import { getSupabasePublicConfig } from './config'
 import { privateConfig } from '../private-access'
-import { selectSingleOwner } from './owner-selection'
+import { selectOwnerByContent } from './owner-selection'
 
 let discovered: { url: string; id: string; expires: number } | undefined
 
@@ -23,14 +23,19 @@ export async function resolveOwnerId() {
   // Dos resultados bastan para detectar ambigüedad sin descargar todas las cuentas.
   const { data, error } = await admin.auth.admin.listUsers({
     page: 1,
-    perPage: 2,
+    perPage: 50,
   })
   if (error)
     throw new Error(
       'No se pudo identificar la cuenta propietaria. Revisá la clave de servidor de Supabase.',
     )
-  const id = selectSingleOwner(data.users)
-  discovered = { url, id, expires: Date.now() + 5000 }
+  let owners: string[] = []
+  if (data.users.length > 1) {
+    const rows = await admin.from('publications').select('user_id').limit(5000)
+    owners = [...new Set((rows.data || []).map((row) => String(row.user_id)))]
+  }
+  const id = selectOwnerByContent(data.users, owners)
+  discovered = { url, id, expires: Date.now() + 10 * 60 * 1000 }
   return id
 }
 
