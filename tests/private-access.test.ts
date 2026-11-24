@@ -15,7 +15,7 @@ test('private link cookie is bound to owner, secret and expiry', () => {
   const now = Date.now()
   const cookie = signAccess(key, owner, now)
   assert.equal(validAccess(cookie, key, owner, now), true)
-  assert.equal(validAccess(cookie, key, owner, now + 31 * 86400000), false)
+  assert.equal(validAccess(cookie, key, owner, now + 366 * 86400000), false)
   assert.equal(validAccess(cookie, key, 'other', now), false)
   assert.equal(validAccess(cookie, key + 'changed', owner, now), false)
   assert.equal(validAccess(cookie + '0', key, owner, now), false)

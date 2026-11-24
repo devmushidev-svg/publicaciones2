@@ -1,12 +1,18 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/proxy'
-import { accessCookie, privateConfig, validAccess } from '@/lib/private-access'
+import {
+  accessCookie,
+  catalogPassword,
+  privateConfig,
+  validAccess,
+} from '@/lib/private-access'
 
 export function proxy(request: NextRequest) {
   // El puente usa su propia clave y valida antes de tocar Supabase.
   if (
     request.nextUrl.pathname.startsWith('/api/catalogo/') ||
-    request.nextUrl.pathname.startsWith('/access/')
+    request.nextUrl.pathname.startsWith('/access/') ||
+    request.nextUrl.pathname === '/entrar'
   ) {
     return NextResponse.next()
   }
@@ -15,6 +21,8 @@ export function proxy(request: NextRequest) {
     if (
       !validAccess(request.cookies.get(accessCookie)?.value, key, ownerBinding)
     ) {
+      if (catalogPassword())
+        return NextResponse.redirect(new URL('/entrar', request.url))
       return new NextResponse('No encontrado.', {
         status: 404,
         headers: { 'Cache-Control': 'no-store' },

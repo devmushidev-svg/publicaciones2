@@ -1,7 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 
 export const accessCookie = 'norte-private-access'
-export const accessSeconds = 30 * 24 * 60 * 60
+export const accessSeconds = 365 * 24 * 60 * 60
 
 export function privateConfig() {
   const dedicatedKey = process.env.CATALOG_ACCESS_KEY?.trim()
@@ -58,4 +58,10 @@ export function validApiKey(authorization: string | null) {
       authorization?.startsWith('Bearer ') &&
       sameSecret(authorization.slice(7), key),
   )
+}
+
+// Contraseña propia para entrar desde el navegador (opcional). Solo servidor.
+export function catalogPassword() {
+  const value = process.env.CATALOG_PASSWORD?.trim()
+  return value && value.length >= 6 ? value : undefined
 }
