@@ -5,7 +5,14 @@ export const accessSeconds = 365 * 24 * 60 * 60
 
 export function privateConfig() {
   const dedicatedKey = process.env.CATALOG_ACCESS_KEY?.trim()
-  const key = dedicatedKey || process.env.MCP_SECRET?.trim()
+  const password = catalogPassword()
+  // Sin MCP_SECRET en la web, la firma del acceso se deriva de la contraseña.
+  const key =
+    dedicatedKey ||
+    process.env.MCP_SECRET?.trim() ||
+    (password
+      ? createHash('sha256').update(`norte-acceso:${password}`).digest('hex')
+      : undefined)
   const ownerId = process.env.CATALOG_OWNER_ID?.trim()
   if (
     !key ||
@@ -16,7 +23,7 @@ export function privateConfig() {
       ))
   ) {
     throw new Error(
-      'Configura MCP_SECRET con el secreto existente de tu publicador.',
+      'Configura CATALOG_PASSWORD o MCP_SECRET en el servidor.',
     )
   }
   return { key, ownerId, ownerBinding: ownerId || 'single-owner' }

@@ -87,3 +87,22 @@ test('owner discovery accepts exactly one existing email account', () => {
   )
   assert.throws(() => selectSingleOwner([{ id: owner }]), /correo/)
 })
+
+test('password alone is enough to sign web access', () => {
+  const names = ['MCP_SECRET', 'CATALOG_ACCESS_KEY', 'CATALOG_OWNER_ID', 'CATALOG_PASSWORD']
+  const old = names.map((name) => process.env[name])
+  try {
+    names.forEach((name) => delete process.env[name])
+    assert.throws(() => privateConfig())
+    process.env.CATALOG_PASSWORD = 'miclave123'
+    const config = privateConfig()
+    assert.equal(config.key.length, 64)
+    assert.notEqual(config.key, 'miclave123')
+    assert.equal(validApiKey('Bearer ' + config.key), false)
+  } finally {
+    names.forEach((name, i) => {
+      if (old[i] === undefined) delete process.env[name]
+      else process.env[name] = old[i]
+    })
+  }
+})
